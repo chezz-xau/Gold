@@ -21,7 +21,5 @@ jobs:
         run: pip install pandas yfinance requests
 
       - name: Run calculation script
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python Gscanner.py
+
