@@ -1,4 +1,3 @@
-
 import os
 import requests
 import pandas as pd
@@ -8,13 +7,11 @@ TOKEN = "8825296896:AAEvBExEDqiwUKW3kTGYJa2Ao1OhDjBpwHQ"
 CHAT_ID = "8825296896"
 
 def check_gold_breakout():
-    # Download Gold data and flatten the column format instantly
     df = yf.download("GC=F", interval="30m", period="5d")
     if df.empty:
         print("Data is empty.")
         return
         
-    # Fix the new multi-index column layout formatting
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
         
