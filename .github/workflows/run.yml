@@ -21,6 +21,6 @@ jobs:
         run: pip install pandas yfinance requests
 
       - name: Run calculation script
-        run: python Gscanner.py
+        run: python gscanner.py
 
 
