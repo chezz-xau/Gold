@@ -35,3 +35,4 @@ def check_gold_breakout():
 if __name__ == "__main__":
     check_gold_breakout()
 
+
