@@ -33,8 +33,8 @@ def check_gold_breakout():
         message = f"ℹ️ **Gold M30 Scan Status** ℹ️\n\n💰 Current Close: ${close_price:.2f}\n🟢 Upper Breakout Target: ${upper_bound:.2f}\n🔴 Lower Breakout Target: ${lower_bound:.2f}\n\n*Status: Market is consolidating inside the range.*"
         
     # 3. Send the message via Telegram
-    url = f"https://telegram.org{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    url = url = f"https://telegram.org{TOKEN}/sendMessage"
+ payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
     requests.post(url, json=payload)
     print("Update message pushed to Telegram successfully!")
 
