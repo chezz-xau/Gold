@@ -2,8 +2,8 @@ name: Gold M30 Scanner
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
-  workflow_dispatch:
+    - cron: '*/30 * * * *' # Automatically triggers every 30 minutes, 24/7!
+  workflow_dispatch: # Allows you to test run it manually anytime you want
 
 jobs:
   scan:
@@ -21,7 +21,8 @@ jobs:
         run: pip install pandas yfinance requests
 
       - name: Run calculation script
-        run: python Gscanner.py
+        run: python gscanner.py
+
 
 
 
