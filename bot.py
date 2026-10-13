@@ -1,16 +1,17 @@
+
 import time
 from datetime import datetime
-import MetaTrader5 as mt5
 import requests
 
 # ==================== KONFIGURASI TELEGRAM ====================
-TELEGRAM_BOT_TOKEN = "8825296896:AAEvBExEDqiwUKW3kTGYJa2Ao1OhDjBpwHQ"  #[span_3](start_span)[span_3](end_span)
-TELEGRAM_CHAT_ID = "8353544393"  #[span_4](start_span)[span_4](end_span)
+TELEGRAM_BOT_TOKEN = "8825296896:AAEvBExEDqiwUKW3kTGYJa2Ao1OhDjBpwHQ"  #[span_4](start_span)[span_4](end_span)
+TELEGRAM_CHAT_ID = "8353544393"  #[span_5](start_span)[span_5](end_span)
 
-# ==================== KONFIGURASI TRADING ====================
-SYMBOL = "XAUUSD"
-TIMEFRAME = mt5.TIMEFRAME_M15  # Boleh tukar ke mt5.TIMEFRAME_H1 atau M5
-LOOKBACK_CANDLES = 20  # Bilangan candle untuk cari Support/Resistance
+# ==================== KONFIGURASI TWELVE DATA API ====================
+TWELVE_DATA_API_KEY = "9e806a60369a422c8e51994dfe6af"  #[span_6](start_span)[span_6](end_span)
+SYMBOL = "XAU/USD"
+INTERVAL = "15min"  # Timeframe (cth: 1min, 5min, 15min, 1h)
+LOOKBACK_CANDLES = 20
 
 
 def send_telegram_message(message):
@@ -29,83 +30,75 @@ def send_telegram_message(message):
 
 
 def check_breakout():
-  # Sambung ke terminal MetaTrader 5 (Valetax / Oanda)
-  if not mt5.initialize():
-    print("Gagal sambung ke MetaTrader 5. Pastikan aplikasi MT5 terbuka.")
-    return
+  # Ambil data siri masa (time series) daripada Twelve Data API
+  url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={INTERVAL}&outputsize={LOOKBACK_CANDLES + 5}&apikey={TWELVE_DATA_API_KEY}"
 
-  # Ambil data harga sejarah
-  rates = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME, 1, LOOKBACK_CANDLES + 1)
-  if rates is None or len(rates) == 0:
-    print("Gagal mengambil data harga XAUUSD.")
-    mt5.shutdown()
-    return
+  try:
+    response = requests.get(url)
+    data = response.json()
 
-  # Cari zon High (Resistance) & Low (Support)
-  highs = [r["high"] for r in rates[:-1]]
-  lows = [r["low"] for r in rates[:-1]]
+    if "values" not in data:
+      print(f"Ralat API: {data.get('message', 'Gagal ambil data')}")
+      return
 
-  resistance_level = max(highs)
-  support_level = min(lows)
+    candles = data["values"]
+    # Susun semula dari lama ke baharu
+    candles.reverse()
 
-  # Ambil harga candle semasa (terkini)
-  current_candle = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME, 0, 1)
-  if current_candle is None or len(current_candle) == 0:
-    mt5.shutdown()
-    return
+    # Ambil harga high dan low (kecuali candle semasa yang sedang berjalan)
+    highs = [float(c["high"]) for c in candles[:-1]]
+    lows = [float(c["low"]) for c in candles[:-1]]
 
-  close_price = current_candle[0]["close"]
+    resistance_level = max(highs)
+    support_level = min(lows)
 
-  print(
-      f"[{datetime.now().strftime('%H:%M:%S')}] XAUUSD | Harga Semasa:"
-      f" {close_price} | Resistance: {resistance_level} | Support:"
-      f" {support_level}"
-  )
+    # Harga penutupan candle terkini
+    close_price = float(candles[-1]["close"])
 
-  # Amaran Breakout Buy
-  if close_price > resistance_level:
-    msg = (
-        f"🚨 *XAUUSD BREAKOUT BUY ALERT!* 🚨\n\n"
-        f"📈 *Harga Semasa:* `{close_price}`\n"
-        f"🟢 *Breakout Resistance:* `{resistance_level}`\n"
-        f"⏰ *Masa:* `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
-        f"💡 Sila semak carta MT5 anda sekarang!"
+    print(
+        f"[{datetime.now().strftime('%H:%M:%S')}] XAUUSD | Harga Semasa:"
+        f" {close_price} | Resistance: {resistance_level} | Support:"
+        f" {support_level}"
     )
-    send_telegram_message(msg)
-    time.sleep(300)  # Rehat 5 minit untuk elak spam amaran berturut-turut
 
-  # Amaran Breakout Sell
-  elif close_price < support_level:
-    msg = (
-        f"🚨 *XAUUSD BREAKOUT SELL ALERT!* 🚨\n\n"
-        f"📉 *Harga Semasa:* `{close_price}`\n"
-        f"🔴 *Breakout Support:* `{support_level}`\n"
-        f"⏰ *Masa:* `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
-        f"💡 Sila semak carta MT5 anda sekarang!"
-    )
-    send_telegram_message(msg)
-    time.sleep(300)
+    # Syarat Breakout Buy
+    if close_price > resistance_level:
+      msg = (
+          f"🚨 *XAUUSD BREAKOUT BUY ALERT!* 🚨\n\n"
+          f"📈 *Harga Semasa:* `{close_price}`\n"
+          f"🟢 *Breakout Resistance:* `{resistance_level}`\n"
+          f"⏰ *Masa:* `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
+          f"💡 Sila semak carta anda sekarang!"
+      )
+      send_telegram_message(msg)
+      time.sleep(300)  # Rehat 5 minit
 
-  mt5.shutdown()
+    # Syarat Breakout Sell
+    elif close_price < support_level:
+      msg = (
+          f"🚨 *XAUUSD BREAKOUT SELL ALERT!* 🚨\n\n"
+          f"📉 *Harga Semasa:* `{close_price}`\n"
+          f"🔴 *Breakout Support:* `{support_level}`\n"
+          f"⏰ *Masa:* `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
+          f"💡 Sila semak carta anda sekarang!"
+      )
+      send_telegram_message(msg)
+      time.sleep(300)
+
+  except Exception as e:
+    print(f"Ralat semasa semak breakout: {e}")
 
 
 # ==================== PELAKSANAAN UTAMA ====================
 if __name__ == "__main__":
-  print("Bot Telegram XAUUSD Breakout bermula...")
-  if mt5.initialize():
-    print(
-        f"Berjaya disambungkan ke akaun broker: {mt5.account_info().company}"
-    )
-    mt5.shutdown()
-
+  print("Bot Telegram XAUUSD Breakout (Cloud API) bermula...")
   while True:
     try:
       check_breakout()
-      time.sleep(60)  # Semakan dilakukan setiap 60 saat
+      time.sleep(60)  # Semak setiap 60 saat
     except KeyboardInterrupt:
       print("Bot dihentikan.")
       break
     except Exception as e:
-      print(f"Ralat: {e}")
+      print(f"Ralat gelung utama: {e}")
       time.sleep(60)
-
