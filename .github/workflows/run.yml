@@ -1,0 +1,27 @@
+name: Gold M30 Scanner
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo code
+        uses: actions/checkout@v3
+
+      - name: Set up Python environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install pandas yfinance requests
+
+      - name: Run calculation script
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python Gscanner.py
