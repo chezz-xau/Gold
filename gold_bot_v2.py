@@ -4,7 +4,8 @@ import threading
 from datetime import datetime
 import requests
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8825296896:AAEvBExEDqiwUKW3kTGYJa2Ao1OhDjBpwHQ")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8825296896:AAHcbusrUNzznnOJbDZoCnQKgV-amAXstUg")
+")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "83535443393")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "ab57d3086cd74858ac947545f0d3f106")
 
