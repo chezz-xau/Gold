@@ -8,7 +8,7 @@ TELEGRAM_BOT_TOKEN = "8825296896:AAEvBExEDqiwUKW3kTGYJa2Ao1OhDjBpwHQ"  #[span_4]
 TELEGRAM_CHAT_ID = "8353544393"  #[span_5](start_span)[span_5](end_span)
 
 # ==================== KONFIGURASI TWELVE DATA API ====================
-TWELVE_DATA_API_KEY = "9e806a60369a422c8e51994dfe6af"  #[span_6](start_span)[span_6](end_span)
+TWELVE_DATA_API_KEY = "ab57d3086cd74858ac947545f0d3f106"  #[span_6](start_span)[span_6](end_span)
 SYMBOL = "XAU/USD"
 INTERVAL = "15min"  # Timeframe (cth: 1min, 5min, 15min, 1h)
 LOOKBACK_CANDLES = 20
