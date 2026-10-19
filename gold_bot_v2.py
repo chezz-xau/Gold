@@ -32,26 +32,8 @@ def fetch_time_series(symbol, interval, outputsize=50):
         print(f"Ralat API: {e}")
     return None
 
-
-
-def get_price_and_levels():
-    data = fetch_time_series(SYMBOL, INTERVAL_ALERT, outputsize=LOOKBACK_CANDLES)
-    if not data:
-        return None, None, None
-    return float(data[0]["close"]), max([float(x["high"]) for x in data[1:]]), min([float(x["low"]) for x in data[1:]])
-
-def background_scanner():
-    print("🚀 Background Scanner bermula...")
-    last_alert = None
-    while True:
-        try:
-            price, res, sup = get_price_and_levels()
-            if price is not None:
-                if price > res and last_alert != "UP":
-                    send_telegram_message(TELEGRAM_CHAT_ID, f"🚨 **BREAKOUT BULLISH**\nHarga `{price:.2f}` tembus Resistance `{res:.2f}`!")
-                    last_alert = "UP"
-           def analyze_market_structure(interval_name):
-    # Tambah jeda 2 saat supaya API tidak capai limit
+def analyze_market_structure(interval_name):
+    # Jeda 2 saat supaya API tidak cecah limit request
     time.sleep(2)
     data = fetch_time_series(SYMBOL, interval_name, outputsize=50)
     if not data or len(data) < 30:
@@ -69,7 +51,24 @@ def background_scanner():
     else:
         status = "🟡 Consolidation / Range"
     return f"**Timeframe {interval_name.upper()}**:\n  └─ Struktur: {status}\n  └─ Harga: `{closes[0]:.2f}`"
-     elif price < sup and last_alert != "DOWN":
+
+def get_price_and_levels():
+    data = fetch_time_series(SYMBOL, INTERVAL_ALERT, outputsize=LOOKBACK_CANDLES)
+    if not data:
+        return None, None, None
+    return float(data[0]["close"]), max([float(x["high"]) for x in data[1:]]), min([float(x["low"]) for x in data[1:]])
+
+def background_scanner():
+    print("🚀 Background Scanner bermula...")
+    last_alert = None
+    while True:
+        try:
+            price, res, sup = get_price_and_levels()
+            if price is not None:
+                if price > res and last_alert != "UP":
+                    send_telegram_message(TELEGRAM_CHAT_ID, f"🚨 **BREAKOUT BULLISH**\nHarga `{price:.2f}` tembus Resistance `{res:.2f}`!")
+                    last_alert = "UP"
+                elif price < sup and last_alert != "DOWN":
                     send_telegram_message(TELEGRAM_CHAT_ID, f"🚨 **BREAKOUT BEARISH**\nHarga `{price:.2f}` tembus Support `{sup:.2f}`!")
                     last_alert = "DOWN"
                 elif sup <= price <= res:
