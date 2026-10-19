@@ -1,10 +1,9 @@
 import os
 import time
 import threading
-from datetime import datetime
 import requests
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8825296896:AAEvBExEDqiwUKW3kTGYJa2Ao1OhDjBpwHQ")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "83535443393")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "ab57d3086cd74858ac947545f0d3f106")
 
@@ -33,7 +32,6 @@ def fetch_time_series(symbol, interval, outputsize=50):
     return None
 
 def analyze_market_structure(interval_name):
-    # Jeda 2 saat supaya API tidak cecah limit request
     time.sleep(2)
     data = fetch_time_series(SYMBOL, interval_name, outputsize=50)
     if not data or len(data) < 30:
@@ -108,4 +106,5 @@ def telegram_listener():
 if __name__ == "__main__":
     threading.Thread(target=background_scanner, daemon=True).start()
     telegram_listener()
+
 
