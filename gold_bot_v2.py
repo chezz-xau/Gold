@@ -4,10 +4,9 @@ import threading
 import telebot
 import requests
 
-# Konfigurasi Token & API Key
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8875792263:AAHxnByd4ZT63L6sWC9LREnvZSiJV6swU8s").strip()
-TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "9e806a60369a422c8e51994dfe6afdfd").strip()
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8353544393").strip()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
 SYMBOL = "XAU/USD"
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -47,9 +46,8 @@ def send_trend(message):
         bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
         return
 
-    c0 = m30_data[0] # Candle M30 Terkini
-    c1 = m30_data[1] # Candle M30 Sebelumnya
-    
+    c0 = m30_data[0]
+    c1 = m30_data[1]
     h1_current = h1_data[0]
     
     close_m30 = float(c0['close'])
@@ -60,7 +58,6 @@ def send_trend(message):
     h1_open = float(h1_current['open'])
     h1_trend = "🟢 BULLISH (H1)" if h1_close >= h1_open else "🔴 BEARISH (H1)"
 
-    # Logik breakout strictly berasaskan CLOSE CANDLE
     breakout_status = "⚖️ Market dalam zon konsolidasi / Sideways"
     if close_m30 > prev_high:
         breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(Harga Close melepasi High candle sebelumnya)"
@@ -130,14 +127,12 @@ def background_breakout_scanner():
 
 if __name__ == "__main__":
     print("Sistem bot dimulakan...", flush=True)
-    
-    # Jalankan background scanner dalam thread berasingan
     t_scanner = threading.Thread(target=background_breakout_scanner, daemon=True)
     t_scanner.start()
     
-    # Jalankan polling Telegram secara tunggal di main thread
     print("🤖 Mulakan Telegram Polling...", flush=True)
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
 
 
 
