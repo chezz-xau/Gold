@@ -36,28 +36,35 @@ def send_status(message):
 
 def background_scanner():
     """Fungsi pengimbas latar belakang (Background Scanner)."""
-    print("🚀 Background Scanner bermula...")
+    print("🚀 Background Scanner bermula...", flush=True)
     while True:
         try:
-            # --- LOGIK IMBAAN HARGA AUTOMATIK ANDA DI SINI ---
             time.sleep(60)
         except Exception as e:
-            print(f"Ralat Scanner: {e}")
+            print(f"Ralat Scanner: {e}", flush=True)
             time.sleep(10)
 
 def telegram_listener():
     """Fungsi pendengar Telegram menggunakan infinity_polling yang stabil."""
-    print("🤖 Telegram Listener bermula (Telebot)...")
+    print("🤖 Telegram Listener bermula (Telebot)...", flush=True)
     while True:
         try:
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
-            print(f"Ralat Listener: {e}")
+            print(f"Ralat Listener: {e}", flush=True)
             time.sleep(5)
 
 if __name__ == "__main__":
-    print("Sistem dimulakan...")
+    print("Sistem dimulakan...", flush=True)
     
+    # Hantar mesej ujian ke Telegram sebaik sahaja bot mula
+    if TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN:
+        try:
+            bot.send_message(TELEGRAM_CHAT_ID, "🚀 *Bot Berjaya Dihidupkan di Railway!*", parse_mode="Markdown")
+            print("Mesej ujian berjaya dihantar ke Telegram.", flush=True)
+        except Exception as e:
+            print(f"Gagal hantar mesej ujian: {e}", flush=True)
+            
     # Utas Pengimbas Latar Belakang
     t_scanner = threading.Thread(target=background_scanner, daemon=True)
     t_scanner.start()
@@ -66,7 +73,8 @@ if __name__ == "__main__":
     try:
         telegram_listener()
     except KeyboardInterrupt:
-        print("Bot dihentikan.")
+        print("Bot dihentikan.", flush=True)
+
 
 
 
