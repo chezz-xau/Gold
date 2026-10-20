@@ -161,6 +161,7 @@ if __name__ == "__main__":
     
     print("🤖 Mulakan Telegram Polling...", flush=True)
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
+    
 
     
 
