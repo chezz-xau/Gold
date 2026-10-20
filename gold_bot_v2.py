@@ -4,9 +4,9 @@ import threading
 import telebot
 import requests
 
-# Token Baharu & API Key
+# Config Token & API Key Baharu
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8875792263:AAF2H0OrhwWiQ4XYpBio27fRbjbXQSnUl-U").strip()
-TWELVE_DATA_API_KEY = "ab57d3086cd74534887340b90e0c0342".strip()
+TWELVE_DATA_API_KEY = "9e806a60369a422c8e51994dfe6afdfd".strip()
 
 SYMBOL = "XAU/USD"
 
@@ -81,6 +81,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
