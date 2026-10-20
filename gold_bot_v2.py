@@ -5,7 +5,7 @@ import telebot
 import requests
 
 # 1. Konfigurasi Token Baharu & API Key
-TELEGRAM_BOT_TOKEN = "8825296896:AAEmv0VGpTiGD1LtdIkKhQ5PxM6NORXvUXE".strip()
+TELEGRAM_BOT_TOKEN = "8649831895:AAFkrQVONTykCKcjyxOmUhSROinKHBRy1zw".strip()
 TWELVE_DATA_API_KEY = "ab57d3086cd74534887340b90e0c0342".strip()
 
 SYMBOL = "XAU/USD"
@@ -81,6 +81,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
