@@ -1,166 +1,141 @@
 import os
 import time
-import threading
-import telebot
 import requests
+from telebot import TeleBot
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+# Konfigurasi API
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TWELVE_DATA_API_KEY = os.getenv('TWELVE_DATA_API_KEY')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-SYMBOL = "XAU/USD"
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+bot = TeleBot(TELEGRAM_BOT_TOKEN)
+SYMBOL = 'XAU/USD'
 
-last_m30_time = None
 
-def get_timeframe_data(interval, outputsize=30):
-    try:
-        url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}"
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        if "values" in data:
-            return data["values"]
-    except Exception as e:
-        print(f"Ralat API Timeframe {interval}: {e}", flush=True)
-    return None
+def get_candles(interval='30min', outputsize=50):
+  url = f'https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}'
+  try:
+    response = requests.get(url)
+    data = response.json()
+    if 'values' in data:
+      candles = []
+      for c in reversed(data['values']):
+        candles.append({
+            'datetime': c['datetime'],
+            'open': float(c['open']),
+            'high': float(c['high']),
+            'low': float(c['low']),
+            'close': float(c['close']),
+        })
+      return candles
+  except Exception as e:
+    print(f'Ralat mendapatkan data lilin: {e}')
+  return []
 
-def find_nearest_peaks(timeframe_data):
-    sma1_list = [float(c['close']) for c in timeframe_data[1:]]
-    
-    peak_highest = None
-    peak_lowest = None
 
-    for i in range(1, len(sma1_list) - 1):
-        if sma1_list[i] > sma1_list[i-1] and sma1_list[i] > sma1_list[i+1]:
-            peak_highest = sma1_list[i]
-            break
+def kira_struktur_bucu(candles):
+  """Logik mengenalpasti bucu atas (peaks) dan bucu bawah (troughs)
 
-    for i in range(1, len(sma1_list) - 1):
-        if sma1_list[i] < sma1_list[i-1] and sma1_list[i] < sma1_list[i+1]:
-            peak_lowest = sma1_list[i]
-            break
+  untuk menentukan struktur Bullish, Bearish, atau Sideways.
+  """
+  if len(candles) < 10:
+    return 'SIDEWAYS', 0.0, 0.0, 0.0
 
-    if peak_highest is None:
-        peak_highest = max(sma1_list[:5])
-    if peak_lowest is None:
-        peak_lowest = min(sma1_list[:5])
+  tutup_terkini = candles[-1]['close']
+  peaks = []
+  troughs = []
 
-    return peak_highest, peak_lowest
+  # Cari bucu swing (high & low tempatan)
+  for i in range(2, len(candles) - 2):
+    if (
+        candles[i]['high'] > candles[i - 1]['high']
+        and candles[i]['high'] > candles[i - 2]['high']
+        and candles[i]['high'] > candles[i + 1]['high']
+        and candles[i]['high'] > candles[i + 2]['high']
+    ):
+      peaks.append((i, candles[i]['high']))
 
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
-    msg = (
-        "🤖 *Syezz XAU/USD SMA 1 Peak Scanner Active!*\n\n"
-        "Arahan sedia ada:\n"
-        "• `/start` - Paparkan menu utama\n"
-        "• `/trend` - Semak analisis bucu M30 & struktur bucu H1\n"
-        "• `/status` - Semak status pelayan"
+    if (
+        candles[i]['low'] < candles[i - 1]['low']
+        and candles[i]['low'] < candles[i - 2]['low']
+        and candles[i]['low'] < candles[i + 1]['low']
+        and candles[i]['low'] < candles[i + 2]['low']
+    ):
+      troughs.append((i, candles[i]['low']))
+
+  bucu_tertinggi = max([p[1] for p in peaks]) if peaks else tutup_terkini
+  bucu_terendah = min([t[1] for t in troughs]) if troughs else tutup_terkini
+
+  # Semak siri bucu terakhir untuk tentukan arah struktur
+  trend = 'SIDEWAYS'
+  if len(peaks) >= 2 and len(troughs) >= 2:
+    last_peak_lower = peaks[-1][1] < peaks[-2][1]
+    last_trough_lower = troughs[-1][1] < troughs[-2][1]
+
+    if last_peak_lower and last_trough_lower:
+      trend = 'BEARISH'  # Lower High & Lower Low
+    elif not last_peak_lower and not last_trough_lower:
+      trend = 'BULLISH'  # Higher High & Higher Low
+
+  return trend, bucu_tertinggi, bucu_terendah, tutup_terkini
+
+
+@bot.message_handler(commands=['trend', 'start'])
+f
+def hantar_analisis_trend(message):
+  try:
+    # Ambil data H1 dan M30
+    h1_candles = get_candles(interval='1h', outputsize=50)
+    m30_candles = get_candles(interval='30min', outputsize=50)
+
+    if not h1_candles or not m30_candles:
+      bot.reply_to(message, '⚠️ Gagal mendapatkan data pasaran daripada Twelve Data.')
+      return
+
+    h1_trend, h1_high, h1_low, h1_close = kira_struktur_bucu(h1_candles)
+    m30_trend, m30_high, m30_low, m30_close = kira_struktur_bucu(m30_candles)
+
+    # Emoji status trend
+    h1_emoji = (
+        '🟢'
+        if h1_trend == 'BULLISH'
+        else ('🔴' if h1_trend == 'BEARISH' else '⚖️')
     )
-    bot.reply_to(message, msg, parse_mode="Markdown")
 
-@bot.message_handler(commands=['trend'])
-def send_trend(message):
-    wait_msg = bot.reply_to(message, "📊 *Sedang mengesan struktur bucu M30 & H1...*", parse_mode="Markdown")
-    
-    m30_data = get_timeframe_data("30min", outputsize=25)
-    h1_data = get_timeframe_data("1h", outputsize=25)
-    
-    if not m30_data or len(m30_data) < 15 or not h1_data or len(h1_data) < 15:
-        bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
-        return
-
-    # 1. STRUKTUR BUCU H1
-    h1_closed = float(h1_data[1]['close'])
-    h1_peak_high, h1_peak_low = find_nearest_peaks(h1_data)
-    
-    if h1_closed > h1_peak_high:
-        h1_trend = f"🟢 BULLISH (H1 Break High: ${h1_peak_high:.2f})"
-    elif h1_closed < h1_peak_low:
-        h1_trend = f"🔴 BEARISH (H1 Break Low: ${h1_peak_low:.2f})"
+    # Penilaian status harga semasa dalam julat bucu M30
+    if m30_close > (m30_high + m30_low) / 2:
+      status_posisi = (
+          'Harga berada di separuh atas bucu (cenderung menguji bucu tertinggi)'
+      )
     else:
-        h1_trend = f"🔴 BEARISH / SIDEWAYS (Belum lepas Bucu High)"
+      status_posisi = (
+          'Harga berada di separuh bawah bucu (cenderung menguji bucu terendah)'
+      )
 
-    # 2. BUCU M30 TERDEKAT
-    c_closed = m30_data[1]
-    sma1_m30_current = float(c_closed['close'])
-    m30_peak_highest, m30_peak_lowest = find_nearest_peaks(m30_data)
-
-    if sma1_m30_current > m30_peak_highest:
-        breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(SMA 1 Close melepasi bucu tertinggi terdekat)"
-    elif sma1_m30_current < m30_peak_lowest:
-        breakout_status = "🔻 **VALID BREAKOUT SELL M30!**\n(SMA 1 Close melepasi bucu terendah terdekat)"
-    else:
-        breakout_status = "⚖️ **SIDEWAYS / ZON KONSOLIDASI**\n(Harga berada di antara bucu terdekat)"
-
-    reply_text = (
-        f"📊 *STRUKTUR BUCU M30 & H1*\n\n"
-        f"🕒 *Trend H1 (Bucu Structure):* {h1_trend}\n"
-        f"• **Close H1:** `${h1_closed:.2f}`\n"
-        f"• **Bucu High H1:** `${h1_peak_high:.2f}` | **Bucu Low H1:** `${h1_peak_low:.2f}`\n\n"
-        f"📈 *Analisis M30 (Bucu Swing Terdekat):*\n"
-        f"• **SMA 1 Close Semasa:** `${sma1_m30_current:.2f}`\n"
-        f"• **Bucu High Terdekat:** `${m30_peak_highest:.2f}`\n"
-        f"• **Bucu Low Terdekat:** `${m30_peak_lowest:.2f}`\n\n"
-        f"🎯 *Status:* {breakout_status}\n\n"
-        f"📌 *Masa Candle Tutup:* `{c_closed['datetime']}`"
+    teks_mesej = (
+        f'📊 **ANALISIS BUCU SWING XAU/USD**\n\n'
+        f'⏱️ **Trend H1:** {h1_emoji} **{h1_trend}**\n'
+        f'   • Harga Close H1: `${h1_close:.2f}`\n'
+        f'   • Bucu Tinggi H1: `${h1_high:.2f}`\n'
+        f'   • Bucu Rendah H1: `${h1_low:.2f}`\n\n'
+        f'📈 **Analisis M30:**\n'
+        f'   • Close Semasa: `${m30_close:.2f}`\n'
+        f'   • Bucu Tertinggi M30: `${m30_high:.2f}`\n'
+        f'   • Bucu Terendah M30: `${m30_low:.2f}`\n\n'
+        f'🎯 **Status Struktur:** `{status_posisi}`\n\n'
+        f'📌 **Kemaskini Sistem Aktif**'
     )
-    
-    bot.edit_message_text(reply_text, chat_id=message.chat.id, message_id=wait_msg.message_id, parse_mode="Markdown")
 
-@bot.message_handler(commands=['status'])
-def send_status(message):
-    bot.reply_to(message, "🟢 Bot Bucu Swing Scanner aktif di Railway!", parse_mode="Markdown")
+    bot.reply_to(message, teks_mesej, parse_mode='Markdown')
 
-def background_breakout_scanner():
-    global last_m30_time
-    print("🚀 Background Bucu Breakout Scanner M30 bermula...", flush=True)
-    
-    while True:
-        try:
-            m30_data = get_timeframe_data("30min", outputsize=25)
-            if m30_data and len(m30_data) >= 15:
-                c_closed = m30_data[1]
-                candle_time = c_closed['datetime']
-                
-                if candle_time != last_m30_time:
-                    sma1_val = float(c_closed['close'])
-                    p_high, p_low = find_nearest_peaks(m30_data)
-                    
-                    alert_msg = None
-                    if sma1_val > p_high:
-                        alert_msg = (
-                            f"🚨 *M30 PEAK BREAKOUT BUY!* 🚀\n\n"
-                            f"💱 **Simbol:** `{SYMBOL}`\n"
-                            f"🟡 **SMA 1 Close:** `${sma1_val:.2f}`\n"
-                            f"📈 Sah melepasi Bucu High (`${p_high:.2f}`)\n"
-                            f"🕒 Masa Tutup: `{candle_time}`"
-                        )
-                    elif sma1_val < p_low:
-                        alert_msg = (
-                            f"🚨 *M30 PEAK BREAKOUT SELL!* 🔻\n\n"
-                            f"💱 **Simbol:** `{SYMBOL}`\n"
-                            f"🟡 **SMA 1 Close:** `${sma1_val:.2f}`\n"
-                            f"📉 Sah melepasi Bucu Low (`${p_low:.2f}`)\n"
-                            f"🕒 Masa Tutup: `{candle_time}`"
-                        )
-                    
-                    if alert_msg and CHAT_ID:
-                        bot.send_message(CHAT_ID, alert_msg, parse_mode="Markdown")
-                        last_m30_time = candle_time
-                        
-            time.sleep(60)
-        except Exception as e:
-            print(f"Ralat Background Scanner: {e}", flush=True)
-            time.sleep(30)
+  except Exception as e:
+    bot.reply_to(message, f'❌ Ralat memproses analisis: {e}')
 
-if __name__ == "__main__":
-    print("Sistem bot dimulakan...", flush=True)
-    
-    t_scanner = threading.Thread(target=background_breakout_scanner, daemon=True)
-    t_scanner.start()
-    
-    print("🤖 Mulakan Telegram Polling...", flush=True)
-    bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
+if __name__ == '__main__':
+  print('Sistem bot dimulakan dengan analisis struktur bucu...')
+  bot.infinity_polling()
+
     
 
     
