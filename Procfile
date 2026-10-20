@@ -1,3 +1,4 @@
-web: python gold_bot_v2.py
+worker: python bot_bucu.py
+
 
 
