@@ -1,9 +1,9 @@
 import os
 import time
 import threading
-import requests
+import telebot
 
-# Konfigurasi Pembolehubah Persekitaran (Variables)
+# Konfigurasi Pembolehubah Persekitaran
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
@@ -12,43 +12,27 @@ SYMBOL = "XAU/USD"
 INTERVAL_ALERT = "15min"
 LOOKBACK_CANDLES = 20
 
-BASE_TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+# Inisialisasi Bot menggunakan telebot
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-def send_telegram_message(chat_id, text):
-    """Fungsi untuk menghantar mesej ke Telegram."""
-    if not chat_id or not TELEGRAM_BOT_TOKEN:
-        print("Ralat: TELEGRAM_BOT_TOKEN atau TELEGRAM_CHAT_ID tiada.")
-        return None
-        
-    url = f"{BASE_TELEGRAM_URL}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        return response.json()
-    except Exception as e:
-        print(f"Ralat hantar mesej: {e}")
-        return None
+@bot.message_handler(commands=['start', 'help'])
+function_start(message):
+    msg = (
+        "🤖 *My Breakout Scanner Bot Active!*\n\n"
+        "Arahan yang sedia ada:\n"
+        "• `/start` - Semak status bot\n"
+        "• `/trend` - Semak analisis trend XAU/USD\n"
+        "• `/status` - Semak sambungan pelayan"
+    )
+    bot.reply_to(message, msg, parse_mode="Markdown")
 
-def process_command(chat_id, text):
-    """Fungsi mengendalikan arahan daripada pengguna Telegram."""
-    cmd = text.strip().lower()
-    print(f"Menerima arahan: {cmd} daripada Chat ID: {chat_id}")
-    
-    if cmd in ["/start", "/help"]:
-        msg = (
-            "🤖 *My Breakout Scanner Bot Active!*\n\n"
-            "Arahan yang sedia ada:\n"
-            "• `/start` - Semak status bot\n"
-            "• `/trend` - Semak analisis trend XAU/USD\n"
-            "• `/status` - Semak sambungan pelayan"
-        )
-        send_telegram_message(chat_id, msg)
-        
-    elif cmd == "/trend":
-        send_telegram_message(chat_id, "📊 *Analisis Trend XAU/USD:*\nData harga sedang diproses...")
-        
-    elif cmd == "/status":
-        send_telegram_message(chat_id, "🟢 Bot aktif dan berjalan lancar di Railway!")
+@bot.message_handler(commands=['trend'])
+function_trend(message):
+    bot.reply_to(message, "📊 *Analisis Trend XAU/USD:*\nData harga sedang diproses...", parse_mode="Markdown")
+
+@bot.message_handler(commands=['status'])
+function_status(message):
+    bot.reply_to(message, "🟢 Bot aktif dan berjalan lancar di Railway!", parse_mode="Markdown")
 
 def background_scanner():
     """Fungsi pengimbas latar belakang (Background Scanner)."""
@@ -57,46 +41,20 @@ def background_scanner():
         try:
             # --- LOGIK IMBAAN HARGA AUTOMATIK ANDA DI SINI ---
             time.sleep(60)
-            
         except Exception as e:
             print(f"Ralat Scanner: {e}")
             time.sleep(10)
 
 def telegram_listener():
-    """Fungsi pendengar Telegram yang lebih stabil & auto-reconnect."""
-    print("🤖 Telegram Listener bermula...")
-    
-    # PADAM WEBHOOK LAMA SUPAYA GETUPDATES BERFUNGSI
-    try:
-        requests.get(f"{BASE_TELEGRAM_URL}/deleteWebhook", timeout=5)
-        print("Webhook lama berjaya dibersihkan.")
-    except Exception as e:
-        print(f"Amaran buang webhook: {e}")
-        
-    offset = 0
-    
+    """Fungsi pendengar Telegram menggunakan infinity_polling yang stabil."""
+    print("🤖 Telegram Listener bermula (Telebot)...")
     while True:
         try:
-            url = f"{BASE_TELEGRAM_URL}/getUpdates"
-            params = {"offset": offset, "timeout": 5}
-            response = requests.get(url, params=params, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                for result in data.get("result", []):
-                    offset = result["update_id"] + 1
-                    message = result.get("message", {})
-                    chat_id = message.get("chat", {}).get("id")
-                    text = message.get("text", "")
-                    
-                    if text and chat_id:
-                        process_command(chat_id, text)
-                        
-            time.sleep(1)
-            
+            # infinity_polling tahan lasak dan automatik reconnect jika terputus
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
-            print(f"Ralat Listener (Akan dicuba semula): {e}")
-            time.sleep(3)
+            print(f"Ralat Listener: {e}")
+            time.sleep(5)
 
 if __name__ == "__main__":
     print("Sistem dimulakan...")
@@ -105,11 +63,11 @@ if __name__ == "__main__":
     t_scanner = threading.Thread(target=background_scanner, daemon=True)
     t_scanner.start()
     
-    # Utas Utama Pendengar Telegram
+    # Jalankan Telegram Bot Listener
     try:
         telegram_listener()
     except KeyboardInterrupt:
-        print("Bot dihentikan secara manual.")
+        print("Bot dihentikan.")
 
 
 
