@@ -29,27 +29,31 @@ def send_welcome(message):
 
 @bot.message_handler(commands=['trend'])
 def send_trend(message):
-    bot.reply_to(message, "📊 *Sedang mendapatkan data harga XAU/USD terkini...*", parse_mode="Markdown")
+    # Hantar mesej makluman sementara
+    wait_msg = bot.reply_to(message, "📊 *Sedang mengambil data harga XAU/USD terkini...*", parse_mode="Markdown")
+    
     try:
-        # Panggilan API Twelve Data menggunakan kunci dari Railway Variables
+        # Memanggil API Twelve Data menggunakan API Key dari Variables Railway
         url = f"https://api.twelvedata.com/price?symbol={SYMBOL}&apikey={TWELVE_DATA_API_KEY}"
         response = requests.get(url, timeout=10)
         data = response.json()
         
         if "price" in data:
-            price = data["price"]
-            reply_msg = (
-                f"📊 *Analisis Trend XAU/USD:*\n\n"
-                f"💱 Simbol: `{SYMBOL}`\n"
-                f"💰 Harga Semasa: **{price}**\n"
-                f"🟢 Status: Berjaya Berhubung dengan Pasaran!"
+            price_val = float(data["price"])
+            reply_text = (
+                f"📊 *ANALISIS HARGA XAU/USD*\n\n"
+                f"💱 **Simbol:** `{SYMBOL}`\n"
+                f"💰 **Harga Semasa:** `${price_val:.2f}`\n\n"
+                f"🟢 Status: *Data Live Twelve Data Berjaya Ditarik!*"
             )
         else:
-            reply_msg = f"⚠️ Gagal mendapatkan data harga. Respon API: {data}"
+            reply_text = f"⚠️ *Gagal mengambil data.* Response API: `{data}`"
+            
     except Exception as e:
-        reply_msg = f"❌ Ralat menyambung ke pelayan data: {e}"
+        reply_text = f"❌ *Ralat sambungan:* `{e}`"
     
-    bot.send_message(message.chat.id, reply_msg, parse_mode="Markdown")
+    # Kemaskini mesej sementara tadi dengan harga sebenar
+    bot.edit_message_text(reply_text, chat_id=message.chat.id, message_id=wait_msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
 def send_status(message):
