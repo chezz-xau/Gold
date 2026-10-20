@@ -25,21 +25,16 @@ def get_timeframe_data(interval, outputsize=30):
     return None
 
 def find_nearest_peaks(timeframe_data):
-    """
-    Mencari Bucu High & Low SMA 1 (Swing Peak) terdekat dari data timeframe (M30/H1).
-    """
     sma1_list = [float(c['close']) for c in timeframe_data[1:]]
     
     peak_highest = None
     peak_lowest = None
 
-    # Cari Bucu High Terdekat
     for i in range(1, len(sma1_list) - 1):
         if sma1_list[i] > sma1_list[i-1] and sma1_list[i] > sma1_list[i+1]:
             peak_highest = sma1_list[i]
             break
 
-    # Cari Bucu Low Terdekat
     for i in range(1, len(sma1_list) - 1):
         if sma1_list[i] < sma1_list[i-1] and sma1_list[i] < sma1_list[i+1]:
             peak_lowest = sma1_list[i]
@@ -58,14 +53,14 @@ def send_welcome(message):
         "🤖 *Syezz XAU/USD SMA 1 Peak Scanner Active!*\n\n"
         "Arahan sedia ada:\n"
         "• `/start` - Paparkan menu utama\n"
-        "• `/trend` - Semak analisis bucu SMA 1 M30 & bucu H1\n"
+        "• `/trend` - Semak analisis bucu M30 & struktur bucu H1\n"
         "• `/status` - Semak status pelayan"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['trend'])
 def send_trend(message):
-    wait_msg = bot.reply_to(message, "📊 *Sedang mengesan bucu SMA 1 M30 & bucu H1...*", parse_mode="Markdown")
+    wait_msg = bot.reply_to(message, "📊 *Sedang mengesan struktur bucu M30 & H1...*", parse_mode="Markdown")
     
     m30_data = get_timeframe_data("30min", outputsize=25)
     h1_data = get_timeframe_data("1h", outputsize=25)
@@ -74,24 +69,22 @@ def send_trend(message):
         bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
         return
 
-    # 1. OVERALL TREND H1 (Berdasarkan Bucu Swing H1)
+    # 1. STRUKTUR BUCU H1
     h1_closed = float(h1_data[1]['close'])
     h1_peak_high, h1_peak_low = find_nearest_peaks(h1_data)
     
     if h1_closed > h1_peak_high:
-        h1_trend = "🟢 BULLISH (H1 Break High)"
+        h1_trend = f"🟢 BULLISH (H1 Break High: ${h1_peak_high:.2f})"
     elif h1_closed < h1_peak_low:
-        h1_trend = "🔴 BEARISH (H1 Break Low)"
+        h1_trend = f"🔴 BEARISH (H1 Break Low: ${h1_peak_low:.2f})"
     else:
-        h1_trend = "🔴 BEARISH / SIDEWAYS (H1 di bawah Bucu High)"
+        h1_trend = f"🔴 BEARISH / SIDEWAYS (Belum lepas Bucu High)"
 
-    # 2. ANALISIS BUCU M30 TERDEKAT
+    # 2. BUCU M30 TERDEKAT
     c_closed = m30_data[1]
     sma1_m30_current = float(c_closed['close'])
-    
     m30_peak_highest, m30_peak_lowest = find_nearest_peaks(m30_data)
 
-    # 3. LOGIK BREAKOUT M30
     if sma1_m30_current > m30_peak_highest:
         breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(SMA 1 Close melepasi bucu tertinggi terdekat)"
     elif sma1_m30_current < m30_peak_lowest:
@@ -100,7 +93,7 @@ def send_trend(message):
         breakout_status = "⚖️ **SIDEWAYS / ZON KONSOLIDASI**\n(Harga berada di antara bucu terdekat)"
 
     reply_text = (
-        f"📊 *ANALISIS BUCU SMA 1 M30 & H1*\n\n"
+        f"📊 *STRUKTUR BUCU M30 & H1*\n\n"
         f"🕒 *Trend H1 (Bucu Structure):* {h1_trend}\n"
         f"• **Close H1:** `${h1_closed:.2f}`\n"
         f"• **Bucu High H1:** `${h1_peak_high:.2f}` | **Bucu Low H1:** `${h1_peak_low:.2f}`\n\n"
@@ -116,11 +109,11 @@ def send_trend(message):
 
 @bot.message_handler(commands=['status'])
 def send_status(message):
-    bot.reply_to(message, "🟢 Bot SMA 1 Peak Scanner aktif di Railway!", parse_mode="Markdown")
+    bot.reply_to(message, "🟢 Bot Bucu Swing Scanner aktif di Railway!", parse_mode="Markdown")
 
 def background_breakout_scanner():
     global last_m30_time
-    print("🚀 Background SMA 1 Peak Breakout Scanner M30 bermula...", flush=True)
+    print("🚀 Background Bucu Breakout Scanner M30 bermula...", flush=True)
     
     while True:
         try:
@@ -136,18 +129,18 @@ def background_breakout_scanner():
                     alert_msg = None
                     if sma1_val > p_high:
                         alert_msg = (
-                            f"🚨 *M30 SMA 1 PEAK BREAKOUT BUY!* 🚀\n\n"
+                            f"🚨 *M30 PEAK BREAKOUT BUY!* 🚀\n\n"
                             f"💱 **Simbol:** `{SYMBOL}`\n"
                             f"🟡 **SMA 1 Close:** `${sma1_val:.2f}`\n"
-                            f"📈 Sah melepasi Bucu High Terdekat (`${p_high:.2f}`)\n"
+                            f"📈 Sah melepasi Bucu High (`${p_high:.2f}`)\n"
                             f"🕒 Masa Tutup: `{candle_time}`"
                         )
                     elif sma1_val < p_low:
                         alert_msg = (
-                            f"🚨 *M30 SMA 1 PEAK BREAKOUT SELL!* 🔻\n\n"
+                            f"🚨 *M30 PEAK BREAKOUT SELL!* 🔻\n\n"
                             f"💱 **Simbol:** `{SYMBOL}`\n"
                             f"🟡 **SMA 1 Close:** `${sma1_val:.2f}`\n"
-                            f"📉 Sah melepasi Bucu Low Terdekat (`${p_low:.2f}`)\n"
+                            f"📉 Sah melepasi Bucu Low (`${p_low:.2f}`)\n"
                             f"🕒 Masa Tutup: `{candle_time}`"
                         )
                     
@@ -168,6 +161,7 @@ if __name__ == "__main__":
     
     print("🤖 Mulakan Telegram Polling...", flush=True)
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
     
 
 
