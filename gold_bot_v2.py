@@ -3,10 +3,10 @@ import time
 import threading
 import telebot
 
-# Konfigurasi Pembolehubah Persekitaran
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+# Konfigurasi Pembolehubah Persekitaran dengan fungsi .strip() untuk buang ruang kosong automatik
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 
 SYMBOL = "XAU/USD"
 INTERVAL_ALERT = "15min"
@@ -74,6 +74,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
