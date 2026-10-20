@@ -4,83 +4,146 @@ import threading
 import telebot
 import requests
 
-# Config Token & API Key Baharu
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8875792263:AAF2H0OrhwWiQ4XYpBio27fRbjbXQSnUl-U").strip()
-TWELVE_DATA_API_KEY = "9e806a60369a422c8e51994dfe6afdfd".strip()
+# Konfigurasi Token & API Key
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8875792263:AAHxnByd4ZT63L6sWC9LREnvZSiJV6swU8s").strip()
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "9e806a60369a422c8e51994dfe6afdfd").strip()
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
 SYMBOL = "XAU/USD"
-
-# Inisialisasi Bot
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+
+last_m30_time = None
+
+def get_timeframe_data(interval, outputsize=3):
+    try:
+        url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if "values" in data:
+            return data["values"]
+    except Exception as e:
+        print(f"Ralat API Timeframe {interval}: {e}", flush=True)
+    return None
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     msg = (
-        "🤖 *My Breakout Scanner Bot Active!*\n\n"
-        "Arahan yang sedia ada:\n"
-        "• `/start` - Semak status bot\n"
-        "• `/trend` - Semak harga & analisis trend XAU/USD\n"
+        "🤖 *Syezz XAU/USD Breakout Scanner Active!*\n\n"
+        "Arahan sedia ada:\n"
+        "• `/start` - Paparkan menu utama\n"
+        "• `/trend` - Semak analisis M30 & H1 terkini (Kriteria Close Candle)\n"
         "• `/status` - Semak sambungan pelayan"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['trend'])
 def send_trend(message):
-    wait_msg = bot.reply_to(message, "📊 *Sedang mengambil data harga XAU/USD terkini...*", parse_mode="Markdown")
+    wait_msg = bot.reply_to(message, "📊 *Sedang menganalisis Close Candle M30 & H1 XAU/USD...*", parse_mode="Markdown")
     
-    try:
-        url = f"https://api.twelvedata.com/price?symbol={SYMBOL}&apikey={TWELVE_DATA_API_KEY}"
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        
-        if "price" in data:
-            price_val = float(data["price"])
-            reply_text = (
-                f"📊 *ANALISIS HARGA XAU/USD*\n\n"
-                f"💱 **Simbol:** `{SYMBOL}`\n"
-                f"💰 **Harga Semasa:** `${price_val:.2f}`\n\n"
-                f"🟢 Status: *Data Live Twelve Data Berjaya Ditarik!*"
-            )
-        else:
-            reply_text = f"⚠️ *Gagal mengambil data.* Response API: `{data}`"
-            
-    except Exception as e:
-        reply_text = f"❌ *Ralat sambungan:* `{e}`"
+    m30_data = get_timeframe_data("30min", outputsize=3)
+    h1_data = get_timeframe_data("1h", outputsize=2)
+    
+    if not m30_data or not h1_data:
+        bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
+        return
+
+    c0 = m30_data[0] # Candle Semasa / Baru Tutup
+    c1 = m30_data[1] # Candle Sebelumnya
+    
+    h1_current = h1_data[0]
+    
+    close_m30 = float(c0['close'])
+    prev_high = float(c1['high'])
+    prev_low = float(c1['low'])
+    
+    h1_close = float(h1_current['close'])
+    h1_open = float(h1_current['open'])
+    h1_trend = "🟢 BULLISH (H1)" if h1_close >= h1_open else "🔴 BEARISH (H1)"
+
+    # Logik ketat: Breakout berdasarkan Close Candle M30
+    breakout_status = "⚖️ Market dalam zon konsolidasi / Sideways"
+    if close_m30 > prev_high:
+        breakout_status = "🚀 **VALID BREAKOUT BUY M30!** (Close candle melepasi High sebelumnya)"
+    elif close_m30 < prev_low:
+        breakout_status = "🔻 **VALID BREAKOUT SELL M30!** (Close candle melepasi Low sebelumnya)"
+
+    reply_text = (
+        f"📊 *ANALISIS BREAKOUT M30 & H1 XAU/USD*\n\n"
+        f"🕒 *Trend H1:* {h1_trend} (`${h1_close:.2f}`)\n\n"
+        f"📈 *Analisis M30 (Close Candle Basis):*\n"
+        f"• Harga Close: `${close_m30:.2f}`\n"
+        f"• High Lepas: `${prev_high:.2f}`\n"
+        f"• Low Lepas: `${prev_low:.2f}`\n"
+        f"• Status: {breakout_status}\n\n"
+        f"📌 *Masa Candle:* `{c0['datetime']}`"
+    )
     
     bot.edit_message_text(reply_text, chat_id=message.chat.id, message_id=wait_msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
 def send_status(message):
-    bot.reply_to(message, "🟢 Bot aktif dan berjalan lancar di Railway!", parse_mode="Markdown")
+    bot.reply_to(message, "🟢 Bot, M30 Close Breakout Scanner & Pelayan Railway berjalan lancar!", parse_mode="Markdown")
 
-def background_scanner():
-    print("🚀 Background Scanner bermula...", flush=True)
+def background_breakout_scanner():
+    global last_m30_time
+    print("🚀 Background Close-Candle Breakout Scanner M30 bermula...", flush=True)
+    
     while True:
         try:
-            time.sleep(60)
+            m30_data = get_timeframe_data("30min", outputsize=2)
+            if m30_data:
+                current_candle = m30_data[0]
+                prev_candle = m30_data[1]
+                candle_time = current_candle['datetime']
+                
+                # Semak apabila candle M30 bertukar (candle baharu terbentuk)
+                if candle_time != last_m30_time:
+                    close_val = float(current_candle['close'])
+                    p_high = float(prev_candle['high'])
+                    p_low = float(prev_candle['low'])
+                    
+                    alert_msg = None
+                    if close_val > p_high:
+                        alert_msg = (
+                            f"🚨 *M30 VALID BREAKOUT BUY ALERT!* 🚀\n\n"
+                            f"💱 **Simbol:** `{SYMBOL}`\n"
+                            f"💰 **Harga Close M30:** `${close_val:.2f}`\n"
+                            f"📈 Sah Close melepasi High Sebelumnya (`${p_high:.2f}`)\n"
+                            f"🕒 Masa: `{candle_time}`"
+                        )
+                    elif close_val < p_low:
+                        alert_msg = (
+                            f"🚨 *M30 VALID BREAKOUT SELL ALERT!* 🔻\n\n"
+                            f"💱 **Simbol:** `{SYMBOL}`\n"
+                            f"💰 **Harga Close M30:** `${close_val:.2f}`\n"
+                            f"📉 Sah Close melepasi Low Sebelumnya (`${p_low:.2f}`)\n"
+                            f"🕒 Masa: `{candle_time}`"
+                        )
+                    
+                    if alert_msg and CHAT_ID:
+                        bot.send_message(CHAT_ID, alert_msg, parse_mode="Markdown")
+                        last_m30_time = candle_time
+                        
+            time.sleep(120)
         except Exception as e:
-            print(f"Ralat Scanner: {e}", flush=True)
-            time.sleep(10)
-
-def telegram_listener():
-    print("🤖 Telegram Listener bermula (Telebot)...", flush=True)
-    while True:
-        try:
-            bot.infinity_polling(timeout=10, long_polling_timeout=5)
-        except Exception as e:
-            print(f"Ralat Listener: {e}", flush=True)
-            time.sleep(5)
+            print(f"Ralat Background Scanner: {e}", flush=True)
+            time.sleep(30)
 
 if __name__ == "__main__":
-    print("Sistem dimulakan...", flush=True)
+    print("Sistem bot dimulakan...", flush=True)
     
-    t_scanner = threading.Thread(target=background_scanner, daemon=True)
+    t_scanner = threading.Thread(target=background_breakout_scanner, daemon=True)
     t_scanner.start()
     
     try:
-        telegram_listener()
+        telegram_listener_thread = threading.Thread(target=lambda: bot.infinity_polling(timeout=10, long_polling_timeout=5), daemon=True)
+        telegram_listener_thread.start()
+        
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
