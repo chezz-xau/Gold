@@ -4,11 +4,12 @@ import threading
 import telebot
 import requests
 
-# TOKEN TELEGRAM (Sudah tetap tanpa space)
-TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4"
+# Token Telegram dimasukkan terus untuk elak ralat space
+TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4".strip()
 
-# Letakkan Twelve Data API Key anda di sini (atau ambil dari environment variable)
-TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "MASUKKAN_API_KEY_ANDA_DI_SINI").strip()
+# Ambil konfigurasi lain daripada Environment Variables Railway secara selamat
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 
 SYMBOL = "XAU/USD"
 
@@ -30,7 +31,7 @@ def send_welcome(message):
 def send_trend(message):
     bot.reply_to(message, "📊 *Sedang mendapatkan data harga XAU/USD terkini...*", parse_mode="Markdown")
     try:
-        # Panggilan API Twelve Data untuk harga semasa
+        # Panggilan API Twelve Data menggunakan kunci dari Railway Variables
         url = f"https://api.twelvedata.com/price?symbol={SYMBOL}&apikey={TWELVE_DATA_API_KEY}"
         response = requests.get(url, timeout=10)
         data = response.json()
