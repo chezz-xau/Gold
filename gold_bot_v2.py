@@ -65,12 +65,19 @@ def background_scanner():
 def telegram_listener():
     """Fungsi pendengar Telegram yang lebih stabil & auto-reconnect."""
     print("🤖 Telegram Listener bermula...")
+    
+    # PADAM WEBHOOK LAMA SUPAYA GETUPDATES BERFUNGSI
+    try:
+        requests.get(f"{BASE_TELEGRAM_URL}/deleteWebhook", timeout=5)
+        print("Webhook lama berjaya dibersihkan.")
+    except Exception as e:
+        print(f"Amaran buang webhook: {e}")
+        
     offset = 0
     
     while True:
         try:
             url = f"{BASE_TELEGRAM_URL}/getUpdates"
-            # Timeout pendek untuk elak ConnectionResetByPeer di Railway
             params = {"offset": offset, "timeout": 5}
             response = requests.get(url, params=params, timeout=10)
             
@@ -103,6 +110,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan secara manual.")
+
 
 
 
