@@ -2,17 +2,15 @@ import os
 import time
 import threading
 import telebot
+import requests
 
-# Bersihkan token secara automatik menggunakan .strip() untuk buang ruang kosong/newline tersembunyi
-TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4".strip()
+# TOKEN TELEGRAM (Sudah tetap tanpa space)
+TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4"
 
-# Pembolehubah lain
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+# Letakkan Twelve Data API Key anda di sini (atau ambil dari environment variable)
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "MASUKKAN_API_KEY_ANDA_DI_SINI").strip()
 
 SYMBOL = "XAU/USD"
-INTERVAL_ALERT = "15min"
-LOOKBACK_CANDLES = 20
 
 # Inisialisasi Bot menggunakan telebot
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -23,14 +21,34 @@ def send_welcome(message):
         "🤖 *My Breakout Scanner Bot Active!*\n\n"
         "Arahan yang sedia ada:\n"
         "• `/start` - Semak status bot\n"
-        "• `/trend` - Semak analisis trend XAU/USD\n"
+        "• `/trend` - Semak harga & analisis trend XAU/USD\n"
         "• `/status` - Semak sambungan pelayan"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['trend'])
 def send_trend(message):
-    bot.reply_to(message, "📊 *Analisis Trend XAU/USD:*\nData harga sedang diproses...", parse_mode="Markdown")
+    bot.reply_to(message, "📊 *Sedang mendapatkan data harga XAU/USD terkini...*", parse_mode="Markdown")
+    try:
+        # Panggilan API Twelve Data untuk harga semasa
+        url = f"https://api.twelvedata.com/price?symbol={SYMBOL}&apikey={TWELVE_DATA_API_KEY}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if "price" in data:
+            price = data["price"]
+            reply_msg = (
+                f"📊 *Analisis Trend XAU/USD:*\n\n"
+                f"💱 Simbol: `{SYMBOL}`\n"
+                f"💰 Harga Semasa: **{price}**\n"
+                f"🟢 Status: Berjaya Berhubung dengan Pasaran!"
+            )
+        else:
+            reply_msg = f"⚠️ Gagal mendapatkan data harga. Respon API: {data}"
+    except Exception as e:
+        reply_msg = f"❌ Ralat menyambung ke pelayan data: {e}"
+    
+    bot.send_message(message.chat.id, reply_msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
 def send_status(message):
@@ -59,14 +77,6 @@ def telegram_listener():
 if __name__ == "__main__":
     print("Sistem dimulakan...", flush=True)
     
-    # Hantar mesej ujian ke Telegram sebaik sahaja bot mula
-    if TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN:
-        try:
-            bot.send_message(TELEGRAM_CHAT_ID, "🚀 *Bot Berjaya Dihidupkan di Railway!*", parse_mode="Markdown")
-            print("Mesej ujian berjaya dihantar ke Telegram.", flush=True)
-        except Exception as e:
-            print(f"Gagal hantar mesej ujian: {e}", flush=True)
-            
     # Utas Pengimbas Latar Belakang
     t_scanner = threading.Thread(target=background_scanner, daemon=True)
     t_scanner.start()
@@ -76,6 +86,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
