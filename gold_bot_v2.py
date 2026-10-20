@@ -131,17 +131,14 @@ def background_breakout_scanner():
 if __name__ == "__main__":
     print("Sistem bot dimulakan...", flush=True)
     
+    # Jalankan background scanner dalam thread berasingan
     t_scanner = threading.Thread(target=background_breakout_scanner, daemon=True)
     t_scanner.start()
     
-    try:
-        telegram_listener_thread = threading.Thread(target=lambda: bot.infinity_polling(timeout=10, long_polling_timeout=5), daemon=True)
-        telegram_listener_thread.start()
-        
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Bot dihentikan.", flush=True)
+    # Jalankan polling Telegram secara tunggal di main thread
+    print("🤖 Mulakan Telegram Polling...", flush=True)
+    bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
 
 
 
