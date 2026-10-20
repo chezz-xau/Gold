@@ -42,19 +42,21 @@ def send_trend(message):
     wait_msg = bot.reply_to(message, "📊 *Sedang mengesan bucu SMA 1 M30 & trend H1...*", parse_mode="Markdown")
     
     m30_data = get_timeframe_data("30min", outputsize=15)
-    h1_data = get_timeframe_data("1h", outputsize=3)
+    h1_data = get_timeframe_data("1h", outputsize=5)
     
-    if not m30_data or len(m30_data) < 12 or not h1_data or len(h1_data) < 2:
+    if not m30_data or len(m30_data) < 12 or not h1_data or len(h1_data) < 3:
         bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
         return
 
-    # --- 1. PENENTUAN TREND H1 (Berdasarkan Arah SMA 1 H1) ---
-    h1_sma1_current = float(h1_data[0]['close'])
-    h1_sma1_prev = float(h1_data[1]['close'])
+    # --- 1. PENENTUAN TREND H1 (CLOSED CANDLE BASIS) ---
+    # h1_data[1] = Candle H1 yang BARU SAHAJA TUTUP
+    # h1_data[2] = Candle H1 SEBELUMNYA
+    h1_sma1_closed = float(h1_data[1]['close'])
+    h1_sma1_prev = float(h1_data[2]['close'])
     
-    if h1_sma1_current > h1_sma1_prev:
+    if h1_sma1_closed > h1_sma1_prev:
         h1_trend = "🟢 BULLISH (H1)"
-    elif h1_sma1_current < h1_sma1_prev:
+    elif h1_sma1_closed < h1_sma1_prev:
         h1_trend = "🔴 BEARISH (H1)"
     else:
         h1_trend = "⚖️ SIDEWAYS (H1)"
@@ -81,7 +83,7 @@ def send_trend(message):
 
     reply_text = (
         f"📊 *ANALISIS BUCU SMA 1 M30 & H1*\n\n"
-        f"🕒 *Trend H1 (SMA 1):* {h1_trend} (`${h1_sma1_current:.2f}`)\n\n"
+        f"🕒 *Trend H1 (SMA 1 Closed):* {h1_trend} (`${h1_sma1_closed:.2f}`)\n\n"
         f"📈 *Analisis M30 (SMA 1 Closed Candle):*\n"
         f"• **SMA 1 Close Semasa:** `${sma1_m30_current:.2f}`\n"
         f"• **Bucu Tertinggi SMA1:** `${peak_highest:.2f}`\n"
@@ -153,13 +155,6 @@ if __name__ == "__main__":
     # Single-session polling untuk elak ralat 409
     print("🤖 Mulakan Telegram Polling...", flush=True)
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
-
-
-
-
-
-
-
 
 
 
