@@ -1,96 +1,166 @@
 import os
+import time
+from datetime import datetime, timedelta
 import requests
-from telebot import TeleBot
+import telebot
 
-# Ambil pembolehubah persekitaran (Environment Variables)
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-TWELVE_DATA_API_KEY = os.getenv('TWELVE_DATA_API_KEY')
+# 1. AMBIL VARIABLES DARI ENVIRONMENT (RAILWAY)
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-bot = TeleBot(TELEGRAM_BOT_TOKEN)
-SYMBOL = 'XAU/USD'
+SYMBOL = "XAU/USD"
 
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-def get_candles(interval='1h', outputsize=30):
-  url = f'https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}'
-  try:
-    res = requests.get(url).json()
-    if 'values' in res:
-      return [
-          {
-              'high': float(c['high']),
-              'low': float(c['low']),
-              'close': float(c['close']),
-          }
-          for c in reversed(res['values'])
-      ]
-  except Exception as e:
-    print(f'Ralat API Twelve Data: {e}')
-  return []
+# Variable ingatan untuk elak alert berulang
+last_m30_alert_state = None  
 
+# 2. FUNGSI DAPATKAN DATA TWELVE DATA
+def get_market_data(timeframe, outputsize=30):
+    url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={timeframe}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if "values" in data:
+            return data["values"]
+        return None
+    except Exception as e:
+        print(f"Error fetching {timeframe}: {e}")
+        return None
 
-def kesan_trend_bucu(candles):
-  if len(candles) < 6:
-    return 'SIDEWAYS', 0, 0, 0
+# 3. FUNGSI ANALISA STRUKTUR (M30 BUCU TERDEKAT VS H1 STRUKTUR BESAR)
+def analyze_structure(candles, lookback_count):
+    current_close = float(candles[0]["close"])
+    
+    # Ambil bilangan candle mengikut lookback_count
+    # (abaikan candle index 0 yang sedang running / paling baru siap)
+    relevant_candles = candles[1:lookback_count + 1]
 
-  close_terkini = candles[-1]['close']
+    high_prices = [float(c["high"]) for c in relevant_candles]
+    low_prices = [float(c["low"]) for c in relevant_candles]
 
-  # Cari bucu atas (peaks / swing highs) & bucu bawah (troughs / swing lows)
-  peaks = [
-      c['high']
-      for i, c in enumerate(candles[1:-1], 1)
-      if c['high'] > candles[i - 1]['high'] and c['high'] > candles[i + 1]['high']
-  ]
-  troughs = [
-      c['low']
-      for i, c in enumerate(candles[1:-1], 1)
-      if c['low'] < candles[i - 1]['low'] and c['low'] < candles[i + 1]['low']
-  ]
+    bucu_tertinggi = max(high_prices)
+    bucu_terendah = min(low_prices)
 
-  high_max = max(peaks) if peaks else close_terkini
-  low_min = min(troughs) if troughs else close_terkini
+    if current_close > bucu_tertinggi:
+        trend = "BULLISH 🟢 (Breakout High)"
+        state = "BULLISH_BREAKOUT"
+    elif current_close < bucu_terendah:
+        trend = "BEARISH 🔴 (Breakout Low)"
+        state = "BEARISH_BREAKOUT"
+    else:
+        trend = "SIDEWAYS 🟡 (Dalam Range)"
+        state = "SIDEWAYS"
 
-  # Semak struktur siri bucu (Lower High & Lower Low = BEARISH | Higher High & Higher Low = BULLISH)
-  if len(peaks) >= 2 and len(troughs) >= 2:
-    if peaks[-1] < peaks[-2] and troughs[-1] < troughs[-2]:
-      return 'BEARISH', high_max, low_min, close_terkini
-    elif peaks[-1] > peaks[-2] and troughs[-1] > troughs[-2]:
-      return 'BULLISH', high_max, low_min, close_terkini
+    return {
+        "close": current_close,
+        "high": bucu_tertinggi,
+        "low": bucu_terendah,
+        "trend": trend,
+        "state": state
+    }
 
-  return 'SIDEWAYS', high_max, low_min, close_terkini
+# 4. COMMAND TELEGRAM: /trend
+@bot.message_handler(commands=['trend'])
+def send_trend_analysis(message):
+    data_h1 = get_market_data("1h", outputsize=30)
+    data_m30 = get_market_data("30min", outputsize=15)
 
+    if not data_h1 or not data_m30:
+        bot.reply_to(message, "❌ Gagal mengambil data market dari Twelve Data.")
+        return
 
-@bot.message_handler(commands=['trend', 'start'])
-def send_trend(message):
-  h1_candles = get_candles('1h', 30)
-  m30_candles = get_candles('30min', 30)
+    # H1: Guna 24 candle belakang (~24 jam / Struktur Besar Major)
+    res_h1 = analyze_structure(data_h1, lookback_count=24)
+    
+    # M30: Guna 6 candle belakang (~3 jam / Bucu Paling Hampir / Terdekat)
+    res_m30 = analyze_structure(data_m30, lookback_count=6)
 
-  if not h1_candles or not m30_candles:
-    bot.reply_to(message, '⚠️ Gagal mengambil data harga daripada API.')
-    return
+    report = (
+        "📊 **ANALISIS STRUKTUR BUCU SEBENAR**\n\n"
+        "⏰ **Analisis H1 (Struktur Besar / Major):**\n"
+        f"• **Trend H1:** {res_h1['trend']}\n"
+        f"• **Close H1:** ${res_h1['close']:.2f}\n"
+        f"• **Bucu Tertinggi H1:** ${res_h1['high']:.2f}\n"
+        f"• **Bucu Terendah H1:** ${res_h1['low']:.2f}\n\n"
+        "📈 **Analisis M30 (Bucu Paling Hampir / Minor):**\n"
+        f"• **Trend M30:** {res_m30['trend']}\n"
+        f"• **Close M30:** ${res_m30['close']:.2f}\n"
+        f"• **Bucu Tinggi M30:** ${res_m30['high']:.2f}\n"
+        f"• **Bucu Rendah M30:** ${res_m30['low']:.2f}\n\n"
+        "🎯 **Status:** Bucu Swing Peak & Trough"
+    )
+    
+    bot.send_message(message.chat.id, report, parse_mode="Markdown")
 
-  h1_trend, h1_h, h1_l, h1_c = kesan_trend_bucu(h1_candles)
-  m30_trend, m30_h, m30_l, m30_c = kesan_trend_bucu(m30_candles)
+# 5. SEMAKAN AUTO-ALERT M30 (BUCU TERDEKAT)
+def check_m30_breakout_alert():
+    global last_m30_alert_state
+    
+    data_m30 = get_market_data("30min", outputsize=15)
+    if not data_m30:
+        return
 
-  h1_icon = '🔴' if h1_trend == 'BEARISH' else ('🟢' if h1_trend == 'BULLISH' else '⚖️')
-  m30_icon = '🔴' if m30_trend == 'BEARISH' else ('🟢' if m30_trend == 'BULLISH' else '⚖️')
+    # M30 menyemak 6 candle terdekat (~3 jam lepas)
+    res_m30 = analyze_structure(data_m30, lookback_count=6)
+    current_state = res_m30["state"]
 
-  msg = (
-      f'📊 **ANALISIS STRUKTUR BUCU SEBENAR**\n\n'
-      f'⏱️ **Trend H1:** {h1_icon} **{h1_trend}**\n'
-      f'   • Close H1: `${h1_c:.2f}`\n'
-      f'   • Bucu Tertinggi H1: `${h1_h:.2f}`\n'
-      f'   • Bucu Terendah H1: `${h1_l:.2f}`\n\n'
-      f'📈 **Analisis M30:**\n'
-      f'   • Trend M30: {m30_icon} **{m30_trend}**\n'
-      f'   • Close M30: `${m30_c:.2f}`\n'
-      f'   • Bucu Tinggi M30: `${m30_h:.2f}`\n'
-      f'   • Bucu Rendah M30: `${m30_l:.2f}`\n\n'
-      f'🎯 **Status:** Bucu Swing Peak & Trough'
-  )
-  bot.reply_to(message, msg, parse_mode='Markdown')
+    if current_state != last_m30_alert_state:
+        if current_state == "BULLISH_BREAKOUT":
+            alert_msg = (
+                "🚀 **ALERT BREAKOUT M30 (BULLISH)!** 🟢\n\n"
+                f"Candle M30 baharu sahaja **CLOSE**!\n"
+                f"• **Close M30:** ${res_m30['close']:.2f}\n"
+                f"• **Bucu High Terdekat Terlepas:** ${res_m30['high']:.2f}\n\n"
+                "Struktur M30 Terdekat sah bertukar kepada **Uptrend / Bullish**!"
+            )
+            if TELEGRAM_CHAT_ID:
+                bot.send_message(TELEGRAM_CHAT_ID, alert_msg, parse_mode="Markdown")
+            last_m30_alert_state = current_state
+            
+        elif current_state == "BEARISH_BREAKOUT":
+            alert_msg = (
+                "⚠️ **ALERT BREAKOUT M30 (BEARISH)!** 🔴\n\n"
+                f"Candle M30 baharu sahaja **CLOSE**!\n"
+                f"• **Close M30:** ${res_m30['close']:.2f}\n"
+                f"• **Bucu Low Terdekat Tembus:** ${res_m30['low']:.2f}\n\n"
+                "Struktur M30 Terdekat sah bertukar kepada **Downtrend / Bearish**!"
+            )
+            if TELEGRAM_CHAT_ID:
+                bot.send_message(TELEGRAM_CHAT_ID, alert_msg, parse_mode="Markdown")
+            last_m30_alert_state = current_state
+            
+        elif current_state == "SIDEWAYS":
+            last_m30_alert_state = current_state
 
+# 6. FUNGSI KIRA MASA SLEEP TEPAT KE CLOSE CANDLE M30
+def wait_until_m30_close():
+    now = datetime.now()
+    if now.minute < 30:
+        next_close = now.replace(minute=30, second=5, microsecond=0)
+    else:
+        next_close = (now + timedelta(hours=1)).replace(minute=0, second=5, microsecond=0)
+    
+    sleep_seconds = (next_close - now).total_seconds()
+    print(f"Waiting {int(sleep_seconds)} seconds for next M30 close at {next_close.strftime('%H:%M:%S')}...")
+    time.sleep(sleep_seconds)
 
-if __name__ == '__main__':
-  print('Bot Struktur Bucu Aktif...')
-  bot.infinity_polling()
+# 7. RUNNER UTAMA
+if __name__ == "__main__":
+    import threading
+
+    def auto_check_loop():
+        check_m30_breakout_alert()
+        while True:
+            wait_until_m30_close()
+            check_m30_breakout_alert()
+
+    t = threading.Thread(target=auto_check_loop)
+    t.daemon = True
+    t.start()
+
+    print("Bot Syezz beroperasi (M30 Terdekat & H1 Struktur Besar)...")
+    bot.infinity_polling()
+
 
