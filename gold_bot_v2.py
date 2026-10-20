@@ -3,8 +3,8 @@ import time
 import threading
 import telebot
 
-# TOKEN DIMASUKKAN TERUS DI SINI
-TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4"
+# Bersihkan token secara automatik menggunakan .strip() untuk buang ruang kosong/newline tersembunyi
+TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4".strip()
 
 # Pembolehubah lain
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -76,6 +76,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
