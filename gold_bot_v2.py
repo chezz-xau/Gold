@@ -14,7 +14,7 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 last_m30_time = None
 
-def get_timeframe_data(interval, outputsize=15):
+def get_timeframe_data(interval, outputsize=20):
     """Mengambil data siri masa daripada Twelve Data API"""
     try:
         url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}"
@@ -26,31 +26,61 @@ def get_timeframe_data(interval, outputsize=15):
         print(f"Ralat API Timeframe {interval}: {e}", flush=True)
     return None
 
+def find_nearest_peaks(m30_data):
+    """
+    Mencari Bucu High & Low SMA 1 (Swing Peak) yang PALING HAMPIR dengan harga semasa.
+    Bucu High = SMA1[i] > SMA1[i-1] dan SMA1[i] > SMA1[i+1]
+    Bucu Low  = SMA1[i] < SMA1[i-1] dan SMA1[i] < SMA1[i+1]
+    """
+    # Ambil senarai harga Close (SMA 1) untuk candle yang DAH TUTUP (indeks 1 ke atas)
+    sma1_list = [float(c['close']) for c in m30_data[1:]]
+    
+    peak_highest = None
+    peak_lowest = None
+
+    # 1. Cari Bucu High Terdekat (Mula dari candle terbaru ke belakang)
+    for i in range(1, len(sma1_list) - 1):
+        if sma1_list[i] > sma1_list[i-1] and sma1_list[i] > sma1_list[i+1]:
+            peak_highest = sma1_list[i]
+            break  # Berhenti terus sebaik sahaja jumpa bucu high terdekat
+
+    # 2. Cari Bucu Low Terdekat (Mula dari candle terbaru ke belakang)
+    for i in range(1, len(sma1_list) - 1):
+        if sma1_list[i] < sma1_list[i-1] and sma1_list[i] < sma1_list[i+1]:
+            peak_lowest = sma1_list[i]
+            break  # Berhenti terus sebaik sahaja jumpa bucu low terdekat
+
+    # Fallback sekiranya pasaran bergerak sehala tanpa bongkokan swing
+    if peak_highest is None:
+        peak_highest = max(sma1_list[:5])
+    if peak_lowest is None:
+        peak_lowest = min(sma1_list[:5])
+
+    return peak_highest, peak_lowest
+
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     msg = (
         "🤖 *Syezz XAU/USD SMA 1 Peak Scanner Active!*\n\n"
         "Arahan sedia ada:\n"
         "• `/start` - Paparkan menu utama\n"
-        "• `/trend` - Semak analisis bucu SMA 1 M30 & trend SMA 1 H1\n"
+        "• `/trend` - Semak analisis bucu SMA 1 M30 terdekat & trend H1\n"
         "• `/status` - Semak status pelayan"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['trend'])
 def send_trend(message):
-    wait_msg = bot.reply_to(message, "📊 *Sedang mengesan bucu SMA 1 M30 & trend H1...*", parse_mode="Markdown")
+    wait_msg = bot.reply_to(message, "📊 *Sedang mengesan bucu SMA 1 M30 terdekat & trend H1...*", parse_mode="Markdown")
     
-    m30_data = get_timeframe_data("30min", outputsize=15)
+    m30_data = get_timeframe_data("30min", outputsize=20)
     h1_data = get_timeframe_data("1h", outputsize=5)
     
-    if not m30_data or len(m30_data) < 12 or not h1_data or len(h1_data) < 3:
+    if not m30_data or len(m30_data) < 15 or not h1_data or len(h1_data) < 3:
         bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
         return
 
     # --- 1. PENENTUAN TREND H1 (CLOSED CANDLE BASIS) ---
-    # h1_data[1] = Candle H1 yang BARU SAHAJA TUTUP
-    # h1_data[2] = Candle H1 SEBELUMNYA
     h1_sma1_closed = float(h1_data[1]['close'])
     h1_sma1_prev = float(h1_data[2]['close'])
     
@@ -61,33 +91,28 @@ def send_trend(message):
     else:
         h1_trend = "⚖️ SIDEWAYS (H1)"
 
-    # --- 2. ANALISIS BUCU SMA 1 M30 (CLOSED CANDLE BASIS) ---
-    # m30_data[1] = Candle M30 yang BARU SAHAJA TUTUP (Closed)
-    c_closed = m30_data[1]
+    # --- 2. ANALISIS BUCU SMA 1 M30 TERDEKAT ---
+    c_closed = m30_data[1]  # Candle M30 baru tutup
     sma1_m30_current = float(c_closed['close'])
     
-    # Ambil sejarah nilai Close (SMA 1) candle M30 terdahulu (indeks 2 hingga 12) untuk cari Bucu
-    history_candles = m30_data[2:12]
-    sma1_history = [float(c['close']) for c in history_candles]
-    
-    peak_highest = max(sma1_history)  # Bucu Tertinggi SMA 1 M30
-    peak_lowest = min(sma1_history)   # Bucu Terendah SMA 1 M30
+    # Cari bucu swing terdekat
+    peak_highest, peak_lowest = find_nearest_peaks(m30_data)
 
     # --- 3. LOGIK BREAKOUT & SIDEWAYS ---
     if sma1_m30_current > peak_highest:
-        breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(SMA 1 Close melepasi bucu tertinggi)"
+        breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(SMA 1 Close melepasi bucu tertinggi terdekat)"
     elif sma1_m30_current < peak_lowest:
-        breakout_status = "🔻 **VALID BREAKOUT SELL M30!**\n(SMA 1 Close melepasi bucu terendah)"
+        breakout_status = "🔻 **VALID BREAKOUT SELL M30!**\n(SMA 1 Close melepasi bucu terendah terdekat)"
     else:
-        breakout_status = "⚖️ **SIDEWAYS**\n(Harga berada di pertengahan bucu tertinggi & terendah SMA 1)"
+        breakout_status = "⚖️ **SIDEWAYS / ZON KONSOLIDASI**\n(Harga berada di antara bucu terdekat)"
 
     reply_text = (
         f"📊 *ANALISIS BUCU SMA 1 M30 & H1*\n\n"
         f"🕒 *Trend H1 (SMA 1 Closed):* {h1_trend} (`${h1_sma1_closed:.2f}`)\n\n"
-        f"📈 *Analisis M30 (SMA 1 Closed Candle):*\n"
+        f"📈 *Analisis M30 (Bucu Swing Terdekat):*\n"
         f"• **SMA 1 Close Semasa:** `${sma1_m30_current:.2f}`\n"
-        f"• **Bucu Tertinggi SMA1:** `${peak_highest:.2f}`\n"
-        f"• **Bucu Terendah SMA1:** `${peak_lowest:.2f}`\n\n"
+        f"• **Bucu High Terdekat:** `${peak_highest:.2f}`\n"
+        f"• **Bucu Low Terdekat:** `${peak_lowest:.2f}`\n\n"
         f"🎯 *Status:* {breakout_status}\n\n"
         f"📌 *Masa Candle Tutup:* `{c_closed['datetime']}`"
     )
@@ -104,19 +129,16 @@ def background_breakout_scanner():
     
     while True:
         try:
-            m30_data = get_timeframe_data("30min", outputsize=15)
-            if m30_data and len(m30_data) >= 12:
+            m30_data = get_timeframe_data("30min", outputsize=20)
+            if m30_data and len(m30_data) >= 15:
                 c_closed = m30_data[1]
                 candle_time = c_closed['datetime']
                 
-                # Semak hanya apabila candle M30 bertukar masa tutupnya (Candle Baharu)
                 if candle_time != last_m30_time:
                     sma1_val = float(c_closed['close'])
-                    history_candles = m30_data[2:12]
-                    sma1_history = [float(c['close']) for c in history_candles]
                     
-                    p_high = max(sma1_history)
-                    p_low = min(sma1_history)
+                    # Cari bucu swing terdekat
+                    p_high, p_low = find_nearest_peaks(m30_data)
                     
                     alert_msg = None
                     if sma1_val > p_high:
@@ -124,7 +146,7 @@ def background_breakout_scanner():
                             f"🚨 *M30 SMA 1 PEAK BREAKOUT BUY!* 🚀\n\n"
                             f"💱 **Simbol:** `{SYMBOL}`\n"
                             f"🟡 **SMA 1 Close:** `${sma1_val:.2f}`\n"
-                            f"📈 Sah melepasi Bucu Tertinggi SMA 1 (`${p_high:.2f}`)\n"
+                            f"📈 Sah melepasi Bucu High Terdekat (`${p_high:.2f}`)\n"
                             f"🕒 Masa Tutup: `{candle_time}`"
                         )
                     elif sma1_val < p_low:
@@ -132,7 +154,7 @@ def background_breakout_scanner():
                             f"🚨 *M30 SMA 1 PEAK BREAKOUT SELL!* 🔻\n\n"
                             f"💱 **Simbol:** `{SYMBOL}`\n"
                             f"🟡 **SMA 1 Close:** `${sma1_val:.2f}`\n"
-                            f"📉 Sah melepasi Bucu Terendah SMA 1 (`${p_low:.2f}`)\n"
+                            f"📉 Sah melepasi Bucu Low Terdekat (`${p_low:.2f}`)\n"
                             f"🕒 Masa Tutup: `{candle_time}`"
                         )
                     
@@ -148,13 +170,12 @@ def background_breakout_scanner():
 if __name__ == "__main__":
     print("Sistem bot dimulakan...", flush=True)
     
-    # Jalankan scanner di thread berasingan
     t_scanner = threading.Thread(target=background_breakout_scanner, daemon=True)
     t_scanner.start()
     
-    # Single-session polling untuk elak ralat 409
     print("🤖 Mulakan Telegram Polling...", flush=True)
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
 
 
 
