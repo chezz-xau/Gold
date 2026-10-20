@@ -4,7 +4,7 @@ import threading
 import telebot
 import requests
 
-# 1. Konfigurasi Token baharu & API Key
+# 1. Konfigurasi Token & API Key
 TELEGRAM_BOT_TOKEN = "8825296896:AAGltCphxSMS5eMBjJOYTBECu9e_GQjifQA".strip()
 TWELVE_DATA_API_KEY = "ab57d3086cd74534887340b90e0c0342".strip()
 
@@ -81,6 +81,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
