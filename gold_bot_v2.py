@@ -7,7 +7,7 @@ import requests
 # Konfigurasi Token & API Key
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8875792263:AAHxnByd4ZT63L6sWC9LREnvZSiJV6swU8s").strip()
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "9e806a60369a422c8e51994dfe6afdfd").strip()
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8353544393").strip()
 
 SYMBOL = "XAU/USD"
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -32,7 +32,7 @@ def send_welcome(message):
         "Arahan sedia ada:\n"
         "• `/start` - Paparkan menu utama\n"
         "• `/trend` - Semak analisis M30 & H1 terkini (Kriteria Close Candle)\n"
-        "• `/status` - Semak sambungan pelayan"
+        "• `/status` - Semak status pelayan"
     )
     bot.reply_to(message, msg, parse_mode="Markdown")
 
@@ -47,8 +47,8 @@ def send_trend(message):
         bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
         return
 
-    c0 = m30_data[0] # Candle Semasa / Baru Tutup
-    c1 = m30_data[1] # Candle Sebelumnya
+    c0 = m30_data[0] # Candle M30 Terkini
+    c1 = m30_data[1] # Candle M30 Sebelumnya
     
     h1_current = h1_data[0]
     
@@ -60,21 +60,21 @@ def send_trend(message):
     h1_open = float(h1_current['open'])
     h1_trend = "🟢 BULLISH (H1)" if h1_close >= h1_open else "🔴 BEARISH (H1)"
 
-    # Logik ketat: Breakout berdasarkan Close Candle M30
+    # Logik breakout strictly berasaskan CLOSE CANDLE
     breakout_status = "⚖️ Market dalam zon konsolidasi / Sideways"
     if close_m30 > prev_high:
-        breakout_status = "🚀 **VALID BREAKOUT BUY M30!** (Close candle melepasi High sebelumnya)"
+        breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(Harga Close melepasi High candle sebelumnya)"
     elif close_m30 < prev_low:
-        breakout_status = "🔻 **VALID BREAKOUT SELL M30!** (Close candle melepasi Low sebelumnya)"
+        breakout_status = "🔻 **VALID BREAKOUT SELL M30!**\n(Harga Close melepasi Low candle sebelumnya)"
 
     reply_text = (
-        f"📊 *ANALISIS BREAKOUT M30 & H1 XAU/USD*\n\n"
+        f"📊 *ANALISIS MULTI-TIMEFRAME XAU/USD*\n\n"
         f"🕒 *Trend H1:* {h1_trend} (`${h1_close:.2f}`)\n\n"
         f"📈 *Analisis M30 (Close Candle Basis):*\n"
-        f"• Harga Close: `${close_m30:.2f}`\n"
-        f"• High Lepas: `${prev_high:.2f}`\n"
-        f"• Low Lepas: `${prev_low:.2f}`\n"
-        f"• Status: {breakout_status}\n\n"
+        f"• Harga Close Semasa: `${close_m30:.2f}`\n"
+        f"• High Candle Lepas: `${prev_high:.2f}`\n"
+        f"• Low Candle Lepas: `${prev_low:.2f}`\n\n"
+        f"🎯 *Status:* {breakout_status}\n\n"
         f"📌 *Masa Candle:* `{c0['datetime']}`"
     )
     
@@ -82,7 +82,7 @@ def send_trend(message):
 
 @bot.message_handler(commands=['status'])
 def send_status(message):
-    bot.reply_to(message, "🟢 Bot, M30 Close Breakout Scanner & Pelayan Railway berjalan lancar!", parse_mode="Markdown")
+    bot.reply_to(message, "🟢 Bot & M30/H1 Scanner aktif di Railway!", parse_mode="Markdown")
 
 def background_breakout_scanner():
     global last_m30_time
@@ -96,7 +96,6 @@ def background_breakout_scanner():
                 prev_candle = m30_data[1]
                 candle_time = current_candle['datetime']
                 
-                # Semak apabila candle M30 bertukar (candle baharu terbentuk)
                 if candle_time != last_m30_time:
                     close_val = float(current_candle['close'])
                     p_high = float(prev_candle['high'])
@@ -109,7 +108,7 @@ def background_breakout_scanner():
                             f"💱 **Simbol:** `{SYMBOL}`\n"
                             f"💰 **Harga Close M30:** `${close_val:.2f}`\n"
                             f"📈 Sah Close melepasi High Sebelumnya (`${p_high:.2f}`)\n"
-                            f"🕒 Masa: `{candle_time}`"
+                            f"🕒 Masa Candle: `{candle_time}`"
                         )
                     elif close_val < p_low:
                         alert_msg = (
@@ -117,7 +116,7 @@ def background_breakout_scanner():
                             f"💱 **Simbol:** `{SYMBOL}`\n"
                             f"💰 **Harga Close M30:** `${close_val:.2f}`\n"
                             f"📉 Sah Close melepasi Low Sebelumnya (`${p_low:.2f}`)\n"
-                            f"🕒 Masa: `{candle_time}`"
+                            f"🕒 Masa Candle: `{candle_time}`"
                         )
                     
                     if alert_msg and CHAT_ID:
