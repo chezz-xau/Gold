@@ -16,7 +16,7 @@ LOOKBACK_CANDLES = 20
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 @bot.message_handler(commands=['start', 'help'])
-function_start(message):
+def send_welcome(message):
     msg = (
         "🤖 *My Breakout Scanner Bot Active!*\n\n"
         "Arahan yang sedia ada:\n"
@@ -27,11 +27,11 @@ function_start(message):
     bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['trend'])
-function_trend(message):
+def send_trend(message):
     bot.reply_to(message, "📊 *Analisis Trend XAU/USD:*\nData harga sedang diproses...", parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
-function_status(message):
+def send_status(message):
     bot.reply_to(message, "🟢 Bot aktif dan berjalan lancar di Railway!", parse_mode="Markdown")
 
 def background_scanner():
@@ -50,7 +50,6 @@ def telegram_listener():
     print("🤖 Telegram Listener bermula (Telebot)...")
     while True:
         try:
-            # infinity_polling tahan lasak dan automatik reconnect jika terputus
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             print(f"Ralat Listener: {e}")
@@ -68,6 +67,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.")
+
 
 
 
