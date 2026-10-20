@@ -4,11 +4,10 @@ import threading
 import telebot
 import requests
 
-# 1. Konfigurasi Token & API Key secara terus dalam kod (elak ralat space/variables)
-TELEGRAM_BOT_TOKEN = "8825296896:AAGLjzkFMzAXSXOcpNrLwkooftfpFlCYyN4".strip()
-TWELVE_DATA_API_KEY = "ab57d3086cd74534887340b90e0c0342".strip()  # Menggunakan API key anda
+# 1. Konfigurasi Token baharu & API Key
+TELEGRAM_BOT_TOKEN = "8825296896:AAGltCphxSMS5eMBjJOYTBECu9e_GQjifQA".strip()
+TWELVE_DATA_API_KEY = "ab57d3086cd74534887340b90e0c0342".strip()
 
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 SYMBOL = "XAU/USD"
 
 # Inisialisasi Bot
@@ -82,6 +81,7 @@ if __name__ == "__main__":
         telegram_listener()
     except KeyboardInterrupt:
         print("Bot dihentikan.", flush=True)
+
 
 
 
