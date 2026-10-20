@@ -4,7 +4,6 @@ import threading
 import telebot
 import requests
 
-# Pembolehubah Persekitaran (Environment Variables)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -15,7 +14,6 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 last_m30_time = None
 
 def get_timeframe_data(interval, outputsize=20):
-    """Mengambil data siri masa daripada Twelve Data API"""
     try:
         url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={interval}&outputsize={outputsize}&apikey={TWELVE_DATA_API_KEY}"
         response = requests.get(url, timeout=10)
@@ -27,30 +25,21 @@ def get_timeframe_data(interval, outputsize=20):
     return None
 
 def find_nearest_peaks(m30_data):
-    """
-    Mencari Bucu High & Low SMA 1 (Swing Peak) yang PALING HAMPIR dengan harga semasa.
-    Bucu High = SMA1[i] > SMA1[i-1] dan SMA1[i] > SMA1[i+1]
-    Bucu Low  = SMA1[i] < SMA1[i-1] dan SMA1[i] < SMA1[i+1]
-    """
-    # Ambil senarai harga Close (SMA 1) untuk candle yang DAH TUTUP (indeks 1 ke atas)
     sma1_list = [float(c['close']) for c in m30_data[1:]]
     
     peak_highest = None
     peak_lowest = None
 
-    # 1. Cari Bucu High Terdekat (Mula dari candle terbaru ke belakang)
     for i in range(1, len(sma1_list) - 1):
         if sma1_list[i] > sma1_list[i-1] and sma1_list[i] > sma1_list[i+1]:
             peak_highest = sma1_list[i]
-            break  # Berhenti terus sebaik sahaja jumpa bucu high terdekat
+            break
 
-    # 2. Cari Bucu Low Terdekat (Mula dari candle terbaru ke belakang)
     for i in range(1, len(sma1_list) - 1):
         if sma1_list[i] < sma1_list[i-1] and sma1_list[i] < sma1_list[i+1]:
             peak_lowest = sma1_list[i]
-            break  # Berhenti terus sebaik sahaja jumpa bucu low terdekat
+            break
 
-    # Fallback sekiranya pasaran bergerak sehala tanpa bongkokan swing
     if peak_highest is None:
         peak_highest = max(sma1_list[:5])
     if peak_lowest is None:
@@ -80,7 +69,7 @@ def send_trend(message):
         bot.edit_message_text("⚠️ Gagal menarik data siri masa daripada Twelve Data.", chat_id=message.chat.id, message_id=wait_msg.message_id)
         return
 
-    # --- 1. PENENTUAN TREND H1 (CLOSED CANDLE BASIS) ---
+    # 1. TREND H1
     h1_sma1_closed = float(h1_data[1]['close'])
     h1_sma1_prev = float(h1_data[2]['close'])
     
@@ -91,14 +80,13 @@ def send_trend(message):
     else:
         h1_trend = "⚖️ SIDEWAYS (H1)"
 
-    # --- 2. ANALISIS BUCU SMA 1 M30 TERDEKAT ---
-    c_closed = m30_data[1]  # Candle M30 baru tutup
+    # 2. ANALISIS BUCU M30 TERDEKAT
+    c_closed = m30_data[1]
     sma1_m30_current = float(c_closed['close'])
     
-    # Cari bucu swing terdekat
     peak_highest, peak_lowest = find_nearest_peaks(m30_data)
 
-    # --- 3. LOGIK BREAKOUT & SIDEWAYS ---
+    # 3. LOGIK BREAKOUT
     if sma1_m30_current > peak_highest:
         breakout_status = "🚀 **VALID BREAKOUT BUY M30!**\n(SMA 1 Close melepasi bucu tertinggi terdekat)"
     elif sma1_m30_current < peak_lowest:
@@ -136,8 +124,6 @@ def background_breakout_scanner():
                 
                 if candle_time != last_m30_time:
                     sma1_val = float(c_closed['close'])
-                    
-                    # Cari bucu swing terdekat
                     p_high, p_low = find_nearest_peaks(m30_data)
                     
                     alert_msg = None
@@ -175,6 +161,7 @@ if __name__ == "__main__":
     
     print("🤖 Mulakan Telegram Polling...", flush=True)
     bot.infinity_polling(timeout=20, long_polling_timeout=10)
+
 
 
 
