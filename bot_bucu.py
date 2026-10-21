@@ -56,4 +56,7 @@ if __name__ == "__main__":
 
     # 3. Jalankan bot polling Telegram secara berterusan
     print("Bot sedang berjalan...")
+    @bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Halo! Bot XAUUSD Syezz kini aktif dan siap memantau pasaran.")
     bot.infinity_polling()
