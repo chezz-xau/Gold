@@ -84,7 +84,7 @@ def send_trend_analysis(message):
     res_h1 = analyze_structure(data_h1, lookback_count=24)
     
     # M30: 6 candle belakang (Minor)
-    res_m30 = analyze_structure(data_m30, lookback_count=6)
+    res_m30 = analyze_structure(data_m30, lookback_count=16)
 
     report = (
         "📊 **ANALISIS STRUKTUR BUCU (BODY PURA)**\n\n"
