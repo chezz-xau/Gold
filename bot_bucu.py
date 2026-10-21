@@ -10,8 +10,8 @@ TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
 
-# URL Render Syezz (Ambil dari Dashboard Render)
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://gold-mfre.onrender.com")
+# URL Render
+RENDER_URL = "https://gold-mfre.onrender.com"
 
 # Mulakan bot Telegram
 bot = telebot.TeleBot(TOKEN)
@@ -43,29 +43,31 @@ def send_welcome(message):
 def check_market():
     while True:
         try:
-            url = f"https://api.twelvedata.com/price?symbol=XAU/USD&apikey={TWELVE_DATA_API_KEY}"
-            response = requests.get(url)
-            data = response.json()
-            
-            if "price" in data:
-                price = data["price"]
-                print(f"Harga semasa XAUUSD: {price}")
+            if TWELVE_DATA_API_KEY:
+                url = f"https://api.twelvedata.com/price?symbol=XAU/USD&apikey={TWELVE_DATA_API_KEY}"
+                response = requests.get(url)
+                data = response.json()
+                
+                if "price" in data:
+                    price = data["price"]
+                    print(f"Harga semasa XAUUSD: {price}")
             
         except Exception as e:
             print(f"Ralat pemantauan pasaran: {e}")
             
         time.sleep(300)
 
-# Tetapkan Webhook di Telegram
-def set_telegram_webhook():
-    time.sleep(2)  # Beri ruang Flask bersedia
-    bot.remove_webhook()
-    webhook_url = f"{RENDER_URL}/{TOKEN}"
-    success = bot.set_webhook(url=webhook_url)
-    if success:
-        print(f"Webhook berjaya ditetapkan ke: {webhook_url}")
-    else:
-        print("Gagal menetapkan Webhook Telegram.")
+# Tetapkan Webhook di Telegram secara automatik
+def auto_set_webhook():
+    time.sleep(3)  # Tunggu Flask hidup sepenuhnya
+    try:
+        webhook_url = f"{RENDER_URL}/{TOKEN}"
+        # Set webhook secara terus menggunakan Requests API Telegram
+        req_url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
+        res = requests.get(req_url).json()
+        print(f"Status Auto-Set Webhook: {res}")
+    except Exception as e:
+        print(f"Ralat set webhook automatik: {e}")
 
 if __name__ == "__main__":
     # 1. Jalankan pemantau pasaran di latar belakang
@@ -73,11 +75,11 @@ if __name__ == "__main__":
     market_thread.daemon = True
     market_thread.start()
 
-    # 2. Tetapkan webhook Telegram di latar belakang
-    webhook_thread = threading.Thread(target=set_telegram_webhook)
+    # 2. Jalankan pendaftaran Webhook automatik di latar belakang
+    webhook_thread = threading.Thread(target=auto_set_webhook)
     webhook_thread.daemon = True
     webhook_thread.start()
 
-    # 3. Jalankan server Flask di thread utama untuk dengar webhook Telegram & Render port
+    # 3. Jalankan server Flask di thread utama
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
