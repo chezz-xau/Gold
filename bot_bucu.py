@@ -30,26 +30,26 @@ def get_market_data(timeframe, outputsize=30):
         return None
 
 # 3. FUNGSI ANALISA STRUKTUR (LOGIK DIPERKETATKAN)
+# FUNGSI ANALISA STRUKTUR (MENGIKUTI CLOSE / BODY CANDLE)
 def analyze_structure(candles, lookback_count):
-    # Harga Close candle semasa (paling terkini/index 0)
+    # Harga Close candle saat ini (index 0)
     current_close = float(candles[0]["close"])
     
-    # Ambil sejarah candle lepas untuk tentukan Bucu High & Low
-    # (index 1 hingga lookback_count)
+    # Ambil sejarah candle ke belakang (index 1 sampai lookback_count)
     history_candles = candles[1:lookback_count + 1]
 
-    high_prices = [float(c["high"]) for c in history_candles]
-    low_prices = [float(c["low"]) for c in history_candles]
+    # MENGAMBIL HARGA CLOSE (BODY), BUKAN SHADOW/HIGH-LOW
+    close_prices = [float(c["close"]) for c in history_candles]
 
-    bucu_tertinggi = max(high_prices)
-    bucu_terendah = min(low_prices)
+    bucu_tertinggi = max(close_prices) # Close tertinggi
+    bucu_terendah = min(close_prices)  # Close terendah
 
-    # LOGIK TEGAS PRICE ACTION BREAKOUT
+    # LOGIK PRICE ACTION BREAKOUT BERDASARKAN CLOSE
     if current_close > bucu_tertinggi:
-        trend = "🟢 BULLISH (Breakout High)"
+        trend = "🟢 BULLISH (Breakout Body High)"
         state = "BULLISH_BREAKOUT"
     elif current_close < bucu_terendah:
-        trend = "🔴 BEARISH (Breakout Low)"
+        trend = "🔴 BEARISH (Breakout Body Low)"
         state = "BEARISH_BREAKOUT"
     else:
         trend = "🟡 SIDEWAYS (Dalam Range)"
@@ -62,6 +62,7 @@ def analyze_structure(candles, lookback_count):
         "trend": trend,
         "state": state
     }
+
 
 # 4. COMMAND TELEGRAM: /trend
 @bot.message_handler(commands=['trend'])
