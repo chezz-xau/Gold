@@ -29,28 +29,30 @@ def get_market_data(timeframe, outputsize=30):
         print(f"Error fetching {timeframe}: {e}")
         return None
 
-# 3. FUNGSI ANALISA STRUKTUR (M30 BUCU TERDEKAT VS H1 STRUKTUR BESAR)
+# 3. FUNGSI ANALISA STRUKTUR (LOGIK DIPERKETATKAN)
 def analyze_structure(candles, lookback_count):
+    # Harga Close candle semasa (paling terkini/index 0)
     current_close = float(candles[0]["close"])
     
-    # Ambil bilangan candle mengikut lookback_count
-    # (abaikan candle index 0 yang sedang running / paling baru siap)
-    relevant_candles = candles[1:lookback_count + 1]
+    # Ambil sejarah candle lepas untuk tentukan Bucu High & Low
+    # (index 1 hingga lookback_count)
+    history_candles = candles[1:lookback_count + 1]
 
-    high_prices = [float(c["high"]) for c in relevant_candles]
-    low_prices = [float(c["low"]) for c in relevant_candles]
+    high_prices = [float(c["high"]) for c in history_candles]
+    low_prices = [float(c["low"]) for c in history_candles]
 
     bucu_tertinggi = max(high_prices)
     bucu_terendah = min(low_prices)
 
+    # LOGIK TEGAS PRICE ACTION BREAKOUT
     if current_close > bucu_tertinggi:
-        trend = "BULLISH 🟢 (Breakout High)"
+        trend = "🟢 BULLISH (Breakout High)"
         state = "BULLISH_BREAKOUT"
     elif current_close < bucu_terendah:
-        trend = "BEARISH 🔴 (Breakout Low)"
+        trend = "🔴 BEARISH (Breakout Low)"
         state = "BEARISH_BREAKOUT"
     else:
-        trend = "SIDEWAYS 🟡 (Dalam Range)"
+        trend = "🟡 SIDEWAYS (Dalam Range)"
         state = "SIDEWAYS"
 
     return {
@@ -71,10 +73,10 @@ def send_trend_analysis(message):
         bot.reply_to(message, "❌ Gagal mengambil data market dari Twelve Data.")
         return
 
-    # H1: Guna 24 candle belakang (~24 jam / Struktur Besar Major)
+    # H1: Guna 24 candle belakang (Struktur Besar / Major)
     res_h1 = analyze_structure(data_h1, lookback_count=24)
     
-    # M30: Guna 6 candle belakang (~3 jam / Bucu Paling Hampir / Terdekat)
+    # M30: Guna 6 candle belakang (Bucu Paling Hampir / Minor)
     res_m30 = analyze_structure(data_m30, lookback_count=6)
 
     report = (
@@ -102,7 +104,6 @@ def check_m30_breakout_alert():
     if not data_m30:
         return
 
-    # M30 menyemak 6 candle terdekat (~3 jam lepas)
     res_m30 = analyze_structure(data_m30, lookback_count=6)
     current_state = res_m30["state"]
 
@@ -143,7 +144,6 @@ def wait_until_m30_close():
         next_close = (now + timedelta(hours=1)).replace(minute=0, second=5, microsecond=0)
     
     sleep_seconds = (next_close - now).total_seconds()
-    print(f"Waiting {int(sleep_seconds)} seconds for next M30 close at {next_close.strftime('%H:%M:%S')}...")
     time.sleep(sleep_seconds)
 
 # 7. RUNNER UTAMA
@@ -160,7 +160,8 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    print("Bot Syezz beroperasi (M30 Terdekat & H1 Struktur Besar)...")
+    print("Bot Syezz beroperasi...")
     bot.infinity_polling()
+
 
 
