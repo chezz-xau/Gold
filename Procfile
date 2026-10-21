@@ -1,1 +1,1 @@
-web: python bot_emas.py
+web: python bot_bucu.py
