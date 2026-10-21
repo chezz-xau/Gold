@@ -24,11 +24,10 @@ def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-# Fungsi semak harga XAUUSD (Syezz boleh sesuaikan logik pemantauan di sini)
+# Fungsi semak harga XAUUSD
 def check_market():
     while True:
         try:
-            # Contoh semakan API Twelve Data untuk Gold (XAU/USD)
             url = f"https://api.twelvedata.com/price?symbol=XAU/USD&apikey={TWELVE_DATA_API_KEY}"
             response = requests.get(url)
             data = response.json()
@@ -36,14 +35,16 @@ def check_market():
             if "price" in data:
                 price = data["price"]
                 print(f"Harga semasa XAUUSD: {price}")
-                # Contoh hantar mesej percubaan (boleh diubah mengikut strategi SNR/SND Syezz)
-                # bot.send_message(CHAT_ID, f"Harga semasa XAUUSD: {price}")
             
         except Exception as e:
             print(f"Ralat semasa semak pasaran: {e}")
             
-        # Semak setiap 5 minit (300 saat) atau ikut kesesuaian
         time.sleep(300)
+
+# Pengendali mesej /start dari Telegram
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Halo! Bot XAUUSD Syezz kini aktif dan siap memantau pasaran.")
 
 if __name__ == "__main__":
     # 1. Jalankan server Flask dalam background thread supaya port terbuka
@@ -56,7 +57,4 @@ if __name__ == "__main__":
 
     # 3. Jalankan bot polling Telegram secara berterusan
     print("Bot sedang berjalan...")
-    @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Halo! Bot XAUUSD Syezz kini aktif dan siap memantau pasaran.")
     bot.infinity_polling()
