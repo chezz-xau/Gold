@@ -47,14 +47,16 @@ def send_welcome(message):
     bot.reply_to(message, "Halo! Bot XAUUSD Syezz kini aktif dan siap memantau pasaran.")
 
 if __name__ == "__main__":
-    # 1. Jalankan server Flask dalam background thread supaya port terbuka
+    # 1. Jalankan server Flask dalam background thread
     flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
     flask_thread.start()
 
-    # 2. Jalankan fungsi pemantauan pasaran dalam thread asing
+    # 2. Jalankan fungsi semak pasaran dalam background thread
     market_thread = threading.Thread(target=check_market)
+    market_thread.daemon = True
     market_thread.start()
 
-    # 3. Jalankan bot polling Telegram secara berterusan
+    # 3. Jalankan bot polling Telegram pada thread utama
     print("Bot sedang berjalan...")
-    bot.infinity_polling()
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
