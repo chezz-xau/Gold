@@ -2,6 +2,8 @@ requests
 Flask
 pytz
 pyTelegramBotAPI
+pandas
+
 
 
 
