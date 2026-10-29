@@ -14,7 +14,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-  return "Bot M30/H1 Breakout Syezz dengan Memori Kekal sedang aktif!"
+  return "Bot M30/H1 Breakout Syezz sedang aktif!"
 
 
 # ---------------------------------------------------------
@@ -24,10 +24,9 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TWELVE_API_KEY = os.getenv("TWELVE_DATA_API")
 
-# MEMORI KEKAL BOT (STATE MEMORY)
-# Nilai ini dikunci dan tidak akan reset jadi Sideways semasa retrace
-PERSISTENT_H1_TREND = "🟡 SIDEWAYS (Menunggu Breakout)"
-PERSISTENT_M30_TREND = "🟡 SIDEWAYS (Menunggu Breakout)"
+# TETAPAN MEMORI KEKAL (DIKUNCI KEPADA BEARISH SEBAGAI DEFAULT MAJOR TREND)
+PERSISTENT_H1_TREND = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
+PERSISTENT_M30_TREND = "🔴 BEARISH (Downtrend Minor / Retrace Zone)"
 
 
 def send_telegram_message(message, chat_id=CHAT_ID):
@@ -68,9 +67,6 @@ def get_market_data(timeframe="1h"):
     return None
 
 
-# ---------------------------------------------------------
-# 3. PENCARIAN BUCU SAH (FRACTAL BODY)
-# ---------------------------------------------------------
 def get_valid_bucu(df):
   if df is None or len(df) < 5:
     return None, None
@@ -106,7 +102,7 @@ def get_valid_bucu(df):
 
 
 # ---------------------------------------------------------
-# 4. KEMASKINI MEMORI STATE TREND (H1 & M30)
+# FUNGSI KEMASKINI MEMORI STATE (H1 & M30)
 # ---------------------------------------------------------
 def evaluate_and_update_states():
   global PERSISTENT_H1_TREND, PERSISTENT_M30_TREND
@@ -118,12 +114,11 @@ def evaluate_and_update_states():
     h1_close = float(df_h1.iloc[-2]["close"])
     h1_high, h1_low = get_valid_bucu(df_h1)
 
-    # Logik Memori Kekal H1
-    if h1_low is not None and h1_close < h1_low:
+    if h1_high is not None and h1_close > h1_high:
+      PERSISTENT_H1_TREND = "🟢 BULLISH (Uptrend Major - Break Resistance)"
+    else:
+      # Kekal Bearish secara default semasa retrace
       PERSISTENT_H1_TREND = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
-    elif h1_high is not None and h1_close > h1_high:
-      PERSISTENT_H1_TREND = "🟢 BULLISH (Uptrend Major / Pullback Zone)"
-    # Jika dalam range (retrace), ia kekal pada status terakhir (tidak reset!)
 
   # Semak M30
   df_m30 = get_market_data(timeframe="30min")
@@ -132,11 +127,10 @@ def evaluate_and_update_states():
     m30_close = float(df_m30.iloc[-2]["close"])
     m30_high, m30_low = get_valid_bucu(df_m30)
 
-    # Logik Memori Kekal M30
-    if m30_low is not None and m30_close < m30_low:
+    if m30_high is not None and m30_close > m30_high:
+      PERSISTENT_M30_TREND = "🟢 BULLISH (Uptrend Minor - Break Resistance)"
+    else:
       PERSISTENT_M30_TREND = "🔴 BEARISH (Downtrend Minor / Retrace Zone)"
-    elif m30_high is not None and m30_close > m30_high:
-      PERSISTENT_M30_TREND = "🟢 BULLISH (Uptrend Minor / Pullback Zone)"
 
   return (
       PERSISTENT_H1_TREND,
@@ -150,9 +144,6 @@ def evaluate_and_update_states():
   )
 
 
-# ---------------------------------------------------------
-# 5. FUNGSI ANALISIS UNTUK /trend
-# ---------------------------------------------------------
 def analyze_current_trend():
   h1_status, h1_close, h1_high, h1_low, m30_status, m30_close, m30_high, m30_low = (
       evaluate_and_update_states()
@@ -174,9 +165,6 @@ def analyze_current_trend():
   return msg
 
 
-# ---------------------------------------------------------
-# 6. TELEGRAM WEBHOOK ROUTE
-# ---------------------------------------------------------
 @app.route(f"/{TOKEN}", methods=["POST"])
 def telegram_webhook():
   data = request.get_json()
@@ -192,18 +180,13 @@ def telegram_webhook():
   return "OK", 200
 
 
-# ---------------------------------------------------------
-# 7. GELUNG UTAMA BOT (BACKGROUND AUTO ALERT M30)
-# ---------------------------------------------------------
 def run_bot():
   print("🤖 Bot Memori Kekal Syezz dimulakan...")
   last_processed_time_m30 = None
 
   while True:
     try:
-      # Sentiasa kemas kini state di background
       evaluate_and_update_states()
-
       df_m30 = get_market_data(timeframe="30min")
       if df_m30 is not None and len(df_m30) >= 10:
         completed_candle = df_m30.iloc[-2]
@@ -235,9 +218,6 @@ def run_bot():
       time.sleep(30)
 
 
-# ---------------------------------------------------------
-# 8. EXECUTION UTAMA
-# ---------------------------------------------------------
 if __name__ == "__main__":
   bot_thread = threading.Thread(target=run_bot)
   bot_thread.daemon = True
