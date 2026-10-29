@@ -41,26 +41,33 @@ def send_telegram_message(message, chat_id=CHAT_ID):
     print(f"Ralat sambungan Telegram: {e}")
 
 
-def get_market_data():
-  """Mengambil data pasaran (Contoh menggunakan Twelve Data API jika berkaitan)
+def get_market_data(timeframe="1h"):
+  """Mengambil data pasaran secara live daripada Twelve Data API"""
+  tf_mapping = {"1h": "1h", "30min": "30min"}
+  tf = tf_mapping.get(timeframe, "1h")
 
-  Pastikan DataFrame yang dipulangkan mempunyai kolum:
-  ['time', 'open', 'high', 'low', 'close']
-  """
-  # --- CONTOH TEMPLATE DATA FETCH (Gantikan dengan sumber anda) ---
-  # url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=50&apikey={TWELVE_API_KEY}"
-  # response = requests.get(url).json()
-  # if "values" in response:
-  #     df = pd.DataFrame(response['values'])
-  #     df = df.iloc[::-1].reset_index(drop=True)
-  #     for col in ['open', 'high', 'low', 'close']:
-  #         df[col] = df[col].astype(float)
-  #     return df
-  pass
+  url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval={tf}&outputsize=100&apikey={TWELVE_API_KEY}"
+
+  try:
+    response = requests.get(url, timeout=10)
+    data = response.json()
+
+    if "values" in data:
+      df = pd.DataFrame(data["values"])
+      df = df.iloc[::-1].reset_index(drop=True)
+      for col in ["open", "high", "low", "close"]:
+        df[col] = df[col].astype(float)
+      return df
+    else:
+      print(f"Ralat API TwelveData ({timeframe}): {data}")
+      return None
+  except Exception as e:
+    print(f"Ralat sambungan ke API: {e}")
+    return None
 
 
 # ---------------------------------------------------------
-# 3. LOGIK PENCARIAN BUCU SAH (ELAK REPAINTING)
+# 3. LOGIK PENCARIAN BUCU SAH (FRACTAL BODY)
 # ---------------------------------------------------------
 def get_valid_bucu(df):
   """Mencari aras Bucu High & Low yang sah (Fractal Body)."""
@@ -74,7 +81,6 @@ def get_valid_bucu(df):
   valid_bucu_lows = []
   valid_bucu_highs = []
 
-  # Imbas data (abaikan 2 candle terakhir yang belum lengkap struktur swing)
   for i in range(2, len(df) - 2):
     if (
         df["body_low"].iloc[i] < df["body_low"].iloc[i - 1]
@@ -99,47 +105,88 @@ def get_valid_bucu(df):
 
 
 # ---------------------------------------------------------
-# 4. FUNGSI ANALISIS TREND SEMASA (DIPERBAIKI)
+# 4. LOGIK MAJOR TREND YANG DIPERBETULKAN (KUNCI STATUS BREAKOUT)
 # ---------------------------------------------------------
-def analyze_current_trend():
-  df = get_market_data()
-  if df is None or len(df) < 5:
-    return "⚠️ Data pasaran tidak mencukupi buat masa ini."
+def evaluate_major_trend(df):
+  """Menilai trend major dengan mengunci status arah breakout terakhir secara tepat"""
+  if df is None or len(df) < 10:
+    return "🟡 SIDEWAYS (Data tidak cukup)", 0, 0, 0
+
+  df = df.copy()
+  df["body_low"] = df[["open", "close"]].min(axis=1)
+  df["body_high"] = df[["open", "close"]].max(axis=1)
 
   completed_candle = df.iloc[-2]
   close_price = float(completed_candle["close"])
-  bucu_high, bucu_low = get_valid_bucu(df)
 
-  # Logik penentuan trend yang lebih fleksibel (Kekal ikut arah breakout terakhir)
-  trend_status = "🟡 SIDEWAYS (Dalam Range)"
+  active_bucu_high, active_bucu_low = get_valid_bucu(df)
 
-  if bucu_low is not None and close_price < bucu_low:
-    trend_status = "🔴 BEARISH (TURUN - Breakout Support)"
-  elif bucu_high is not None and close_price > bucu_high:
-    trend_status = "🟢 BULLISH (NAIK - Breakout Resistance)"
+  # Tentukan status asas
+  major_trend = "🟡 SIDEWAYS (Dalam Range)"
+
+  # Semak jika harga semasa sudah pecah bucu secara terus
+  if active_bucu_low is not None and close_price < active_bucu_low:
+    major_trend = "🔴 BEARISH (Breakout Support - Downtrend Major)"
+  elif active_bucu_high is not None and close_price > active_bucu_high:
+    major_trend = "🟢 BULLISH (Breakout Resistance - Uptrend Major)"
   else:
-    # Jika harga berada di antara bucu, semak candle terdahulu sama ada baru lepas pecah support/resistance
-    # Supaya ia tidak terus jadi sideways kalau sekadar retrace kecil
-    recent_closes = df["close"].iloc[-5:-1].values
-    if bucu_low is not None and any(c < bucu_low for c in recent_closes):
-      trend_status = (
-          "🔴 BEARISH (Rekod Penurunan - Harga Sedang Retrace/Pantul)"
-      )
-    elif bucu_high is not None and any(c > bucu_high for c in recent_closes):
-      trend_status = "🟢 BULLISH (Rekod Kenaikan - Harga Sedang Pullback)"
+    # Imbas sejarah ke belakang untuk lihat sama ada trend major asal adalah Bearish/Bullish
+    # (Mengelakkan ia serta-merta jadi Sideways semasa retrace kecil)
+    detected_trend = "🟡 SIDEWAYS (Dalam Range)"
+    curr_bh, curr_bl = None, None
+
+    for i in range(5, len(df) - 1):
+      sub_df = df.iloc[:i]
+      bh, bl = get_valid_bucu(sub_df)
+      if bh is not None:
+        curr_bh = bh
+      if bl is not None:
+        curr_bl = bl
+
+      c_close = df["close"].iloc[i]
+      if curr_bl is not None and c_close < curr_bl:
+        detected_trend = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
+      elif curr_bh is not None and c_close > curr_bh:
+        detected_trend = "🟢 BULLISH (Uptrend Major / Pullback Zone)"
+
+    major_trend = detected_trend
+
+  return (
+      major_trend,
+      close_price,
+      active_bucu_high if active_bucu_high else 0,
+      active_bucu_low if active_bucu_low else 0,
+  )
+
+
+# ---------------------------------------------------------
+# 5. FUNGSI ANALISIS GABUNGAN H1 & M30 UNTUK /trend
+# ---------------------------------------------------------
+def analyze_current_trend():
+  df_h1 = get_market_data(timeframe="1h")
+  df_m30 = get_market_data(timeframe="30min")
+
+  h1_status, h1_close, h1_high, h1_low = evaluate_major_trend(df_h1)
+  m30_status, m30_close, m30_high, m30_low = evaluate_major_trend(df_m30)
 
   msg = (
-      f"📊 *ANALISIS STRUKTUR BUCU (BODY CLOSE)*\n\n"
-      f"• **Trend Semasa:** {trend_status}\n"
-      f"• **Close Terkini:** `${close_price:.2f}`\n"
-      f"• **Bucu Body High:** `${bucu_high if bucu_high else 0:.2f}`\n"
-      f"• **Bucu Body Low:** `${bucu_low if bucu_low else 0:.2f}`"
+      f"📊 *ANALISIS STRUKTUR MAJOR TREND (BODY CLOSE)*\n\n"
+      f"⏰ *Analisis H1 (Major Trend):*\n"
+      f"• Trend H1: {h1_status}\n"
+      f"• Close H1: `${h1_close:.2f}`\n"
+      f"• Bucu Body High H1: `${h1_high:.2f}`\n"
+      f"• Bucu Body Low H1: `${h1_low:.2f}`\n\n"
+      f"📉 *Analisis M30 (Minor Trend):*\n"
+      f"• Trend M30: {m30_status}\n"
+      f"• Close M30: `${m30_close:.2f}`\n"
+      f"• Bucu Body High M30: `${m30_high:.2f}`\n"
+      f"• Bucu Body Low M30: `${m30_low:.2f}`"
   )
   return msg
 
 
 # ---------------------------------------------------------
-# 5. TELEGRAM WEBHOOK ROUTE (UNTUK TERIMA ARAHAN /trend)
+# 6. TELEGRAM WEBHOOK ROUTE (UNTUK TERIMA ARAHAN /trend)
 # ---------------------------------------------------------
 @app.route(f"/{TOKEN}", methods=["POST"])
 def telegram_webhook():
@@ -157,69 +204,46 @@ def telegram_webhook():
 
 
 # ---------------------------------------------------------
-# 6. GELUNG UTAMA BOT (BACKGROUND PROCESS UNTUK ALERT)
+# 7. GELUNG UTAMA BOT (BACKGROUND PROCESS UNTUK ALERT)
 # ---------------------------------------------------------
 def run_bot():
   print("🤖 Bot Breakout Syezz dimulakan...")
-  last_processed_time = None
+  last_processed_time_m30 = None
 
   while True:
     try:
-      df = get_market_data()
+      df_m30 = get_market_data(timeframe="30min")
 
-      if df is not None and len(df) >= 5:
-        completed_candle = df.iloc[-2]
+      if df_m30 is not None and len(df_m30) >= 10:
+        completed_candle = df_m30.iloc[-2]
         current_candle_time = str(completed_candle["time"])
         close_price = float(completed_candle["close"])
+        _, bucu_low = get_valid_bucu(df_m30)
 
-        bucu_high, bucu_low = get_valid_bucu(df)
-
-        # Semak jika ini candle baharu yang baru selesai tutup
-        if current_candle_time != last_processed_time:
-
-          # Amaran Breakout Sell (Bearish)
+        if current_candle_time != last_processed_time_m30:
           if bucu_low is not None and close_price < bucu_low:
             msg = (
-                f"🚨 *ALERT BREAKOUT BEARISH (BODY CLOSE)*! 🔴\n\n"
-                f"Candle baharu sahaja *CLOSE* di bawah support!\n"
+                f"🚨 *ALERT BREAKOUT BEARISH M30*! 🔴\n\n"
                 f"• Close Harga: `${close_price:.2f}`\n"
-                f"• Bucu Body Low Tembus: `${bucu_low:.2f}`\n\n"
-                f"_Struktur sah bertukar kepada Downtrend / Bearish!_"
+                f"• Bucu Body Low Tembus: `${bucu_low:.2f}`"
             )
             send_telegram_message(msg)
-            last_processed_time = current_candle_time
-            print(f"[{datetime.now()}] Alert Breakout Sell berjaya dihantar!")
+            last_processed_time_m30 = current_candle_time
 
-          # Amaran Breakout Buy (Bullish)
-          elif bucu_high is not None and close_price > bucu_high:
-            msg = (
-                f"🚨 *ALERT BREAKOUT BULLISH (BODY CLOSE)*! 🟢\n\n"
-                f"Candle baharu sahaja *CLOSE* di atas resistance!\n"
-                f"• Close Harga: `${close_price:.2f}`\n"
-                f"• Bucu Body High Tembus: `${bucu_high:.2f}`\n\n"
-                f"_Struktur sah bertukar kepada Uptrend / Bullish!_"
-            )
-            send_telegram_message(msg)
-            last_processed_time = current_candle_time
-            print(f"[{datetime.now()}] Alert Breakout Buy berjaya dihantar!")
-
-      # Semak setiap 30 saat
       time.sleep(30)
 
     except Exception as e:
-      print(f"Ralat berlaku dalam gelung utama bot: {e}")
+      print(f"Ralat gelung utama bot: {e}")
       time.sleep(30)
 
 
 # ---------------------------------------------------------
-# 7. EXECUTION UTAMA (FLASK + THREADING)
+# 8. EXECUTION UTAMA (FLASK + THREADING)
 # ---------------------------------------------------------
 if __name__ == "__main__":
-  # Jalankan bot di background thread
   bot_thread = threading.Thread(target=run_bot)
   bot_thread.daemon = True
   bot_thread.start()
 
-  # Jalankan server Flask pada port Render
   port = int(os.environ.get("PORT", 5000))
   app.run(host="0.0.0.0", port=port)
