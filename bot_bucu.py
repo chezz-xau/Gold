@@ -14,7 +14,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-  return "Bot M30/H1 Breakout Syezz sedang aktif!"
+  return "Bot M30/H1 Trend Syezz Aktif!"
 
 
 # ---------------------------------------------------------
@@ -24,53 +24,39 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TWELVE_API_KEY = os.getenv("TWELVE_DATA_API")
 
-# TETAPAN MEMORI KEKAL (DIKUNCI KEPADA BEARISH SEBAGAI DEFAULT MAJOR TREND)
-PERSISTENT_H1_TREND = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
-PERSISTENT_M30_TREND = "🔴 BEARISH (Downtrend Minor / Retrace Zone)"
-
 
 def send_telegram_message(message, chat_id=CHAT_ID):
   if not TOKEN or not chat_id:
-    print("Ralat: Token Telegram atau Chat ID tidak ditemui.")
     return
-
   url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
   payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
   try:
-    response = requests.post(url, json=payload, timeout=10)
-    if response.status_code != 200:
-      print(f"Gagal hantar Telegram: {response.text}")
+    requests.post(url, json=payload, timeout=10)
   except Exception as e:
-    print(f"Ralat sambungan Telegram: {e}")
+    print(f"Ralat Telegram: {e}")
 
 
 def get_market_data(timeframe="1h"):
-  tf_mapping = {"1h": "1h", "30min": "30min"}
-  tf = tf_mapping.get(timeframe, "1h")
+  tf = "1h" if timeframe == "1h" else "30min"
   url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval={tf}&outputsize=100&apikey={TWELVE_API_KEY}"
-
   try:
     response = requests.get(url, timeout=10)
     data = response.json()
-
     if "values" in data:
       df = pd.DataFrame(data["values"])
       df = df.iloc[::-1].reset_index(drop=True)
       for col in ["open", "high", "low", "close"]:
         df[col] = df[col].astype(float)
       return df
-    else:
-      print(f"Ralat API TwelveData ({timeframe}): {data}")
-      return None
+    return None
   except Exception as e:
-    print(f"Ralat sambungan ke API: {e}")
+    print(f"Ralat API: {e}")
     return None
 
 
 def get_valid_bucu(df):
   if df is None or len(df) < 5:
     return None, None
-
   df = df.copy()
   df["body_low"] = df[["open", "close"]].min(axis=1)
   df["body_high"] = df[["open", "close"]].max(axis=1)
@@ -95,72 +81,55 @@ def get_valid_bucu(df):
     ):
       valid_bucu_highs.append(df["body_high"].iloc[i])
 
-  last_bucu_low = valid_bucu_lows[-1] if valid_bucu_lows else None
-  last_bucu_high = valid_bucu_highs[-1] if valid_bucu_highs else None
-
-  return last_bucu_high, last_bucu_low
-
-
-# ---------------------------------------------------------
-# FUNGSI KEMASKINI MEMORI STATE (H1 & M30)
-# ---------------------------------------------------------
-def evaluate_and_update_states():
-  global PERSISTENT_H1_TREND, PERSISTENT_M30_TREND
-
-  # Semak H1
-  df_h1 = get_market_data(timeframe="1h")
-  h1_close, h1_high, h1_low = 0, 0, 0
-  if df_h1 is not None and len(df_h1) >= 10:
-    h1_close = float(df_h1.iloc[-2]["close"])
-    h1_high, h1_low = get_valid_bucu(df_h1)
-
-    if h1_high is not None and h1_close > h1_high:
-      PERSISTENT_H1_TREND = "🟢 BULLISH (Uptrend Major - Break Resistance)"
-    else:
-      # Kekal Bearish secara default semasa retrace
-      PERSISTENT_H1_TREND = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
-
-  # Semak M30
-  df_m30 = get_market_data(timeframe="30min")
-  m30_close, m30_high, m30_low = 0, 0, 0
-  if df_m30 is not None and len(df_m30) >= 10:
-    m30_close = float(df_m30.iloc[-2]["close"])
-    m30_high, m30_low = get_valid_bucu(df_m30)
-
-    if m30_high is not None and m30_close > m30_high:
-      PERSISTENT_M30_TREND = "🟢 BULLISH (Uptrend Minor - Break Resistance)"
-    else:
-      PERSISTENT_M30_TREND = "🔴 BEARISH (Downtrend Minor / Retrace Zone)"
-
   return (
-      PERSISTENT_H1_TREND,
-      h1_close,
-      h1_high if h1_high else 0,
-      h1_low if h1_low else 0,
-      PERSISTENT_M30_TREND,
-      m30_close,
-      m30_high if m30_high else 0,
-      m30_low if m30_low else 0,
+      valid_bucu_highs[-1] if valid_bucu_highs else None,
+      valid_bucu_lows[-1] if valid_bucu_lows else None,
   )
 
 
+# ---------------------------------------------------------
+# 3. LOGIK KEKAL TREND (BEARISH OVERRIDE)
+# ---------------------------------------------------------
+def evaluate_trend(df):
+  if df is None or len(df) < 10:
+    return "🔴 BEARISH (Downtrend / Retrace Zone)", 0, 0, 0
+
+  df = df.copy()
+  close_price = float(df.iloc[-2]["close"])
+  bucu_high, bucu_low = get_valid_bucu(df)
+
+  # Jika harga close di atas Bucu High utama, baru jadi Bullish.
+  # Selain itu, selagi di bawah Bucu High, ia DIPAKSA kekal Bearish (tiada lagi Sideways).
+  if bucu_high is not None and close_price > bucu_high:
+    trend = "🟢 BULLISH (Uptrend Major - Break Resistance)"
+  else:
+    trend = "🔴 BEARISH (Downtrend / Retrace Zone - Kekal Trend)"
+
+  return trend, close_price, bucu_high if bucu_high else 0, bucu_low if bucu_low else 0
+
+
+# ---------------------------------------------------------
+# 4. FUNGSI ANALISIS /trend
+# ---------------------------------------------------------
 def analyze_current_trend():
-  h1_status, h1_close, h1_high, h1_low, m30_status, m30_close, m30_high, m30_low = (
-      evaluate_and_update_states()
-  )
+  df_h1 = get_market_data(timeframe="1h")
+  df_m30 = get_market_data(timeframe="30min")
+
+  h1_status, h1_close, h1_high, h1_low = evaluate_trend(df_h1)
+  m30_status, m30_close, m30_high, m30_low = evaluate_trend(df_m30)
 
   msg = (
-      f"📊 *ANALISIS MEMORI KEKAL MAJOR TREND*\n\n"
+      f"📊 *ANALISIS STRUKTUR MAJOR TREND (LOCKED BEARISH)*\n\n"
       f"⏰ *Analisis H1 (Major Trend):*\n"
       f"• Trend H1: {h1_status}\n"
       f"• Close H1: `${h1_close:.2f}`\n"
-      f"• Bucu Body High H1: `${h1_high:.2f}`\n"
-      f"• Bucu Body Low H1: `${h1_low:.2f}`\n\n"
+      f"• Bucu High H1: `${h1_high:.2f}`\n"
+      f"• Bucu Low H1: `${h1_low:.2f}`\n\n"
       f"📉 *Analisis M30 (Minor Trend):*\n"
       f"• Trend M30: {m30_status}\n"
       f"• Close M30: `${m30_close:.2f}`\n"
-      f"• Bucu Body High M30: `${m30_high:.2f}`\n"
-      f"• Bucu Body Low M30: `${m30_low:.2f}`"
+      f"• Bucu High M30: `${m30_high:.2f}`\n"
+      f"• Bucu Low M30: `${m30_low:.2f}`"
   )
   return msg
 
@@ -172,49 +141,38 @@ def telegram_webhook():
     message = data["message"]
     chat_id = message["chat"]["id"]
     text = message.get("text", "")
-
     if text.startswith("/trend"):
       response_text = analyze_current_trend()
       send_telegram_message(response_text, chat_id=chat_id)
-
   return "OK", 200
 
 
 def run_bot():
-  print("🤖 Bot Memori Kekal Syezz dimulakan...")
-  last_processed_time_m30 = None
-
+  print("🤖 Bot Syezz Dikemaskini & Berjalan...")
+  last_time = None
   while True:
     try:
-      evaluate_and_update_states()
       df_m30 = get_market_data(timeframe="30min")
       if df_m30 is not None and len(df_m30) >= 10:
-        completed_candle = df_m30.iloc[-2]
-        current_candle_time = str(completed_candle["time"])
-        close_price = float(completed_candle["close"])
-        bucu_high, bucu_low = get_valid_bucu(df_m30)
+        candle = df_m30.iloc[-2]
+        c_time = str(candle["time"])
+        close = float(candle["close"])
+        b_high, b_low = get_valid_bucu(df_m30)
 
-        if current_candle_time != last_processed_time_m30:
-          if bucu_low is not None and close_price < bucu_low:
-            msg = (
-                f"🚨 *ALERT BREAKOUT BEARISH M30*! 🔴\n\n"
-                f"• Close Harga: `${close_price:.2f}`\n"
-                f"• Bucu Body Low Tembus: `${bucu_low:.2f}`"
+        if c_time != last_time:
+          if b_low is not None and close < b_low:
+            send_telegram_message(
+                f"🚨 *BREAKOUT BEARISH M30*!\nClose: `${close:.2f}`"
             )
-            send_telegram_message(msg)
-            last_processed_time_m30 = current_candle_time
-          elif bucu_high is not None and close_price > bucu_high:
-            msg = (
-                f"🚨 *ALERT BREAKOUT BULLISH M30*! 🟢\n\n"
-                f"• Close Harga: `${close_price:.2f}`\n"
-                f"• Bucu Body High Tembus: `${bucu_high:.2f}`"
+            last_time = c_time
+          elif b_high is not None and close > b_high:
+            send_telegram_message(
+                f"🚨 *BREAKOUT BULLISH M30*!\nClose: `${close:.2f}`"
             )
-            send_telegram_message(msg)
-            last_processed_time_m30 = current_candle_time
-
+            last_time = c_time
       time.sleep(30)
     except Exception as e:
-      print(f"Ralat gelung utama bot: {e}")
+      print(f"Ralat: {e}")
       time.sleep(30)
 
 
@@ -222,6 +180,5 @@ if __name__ == "__main__":
   bot_thread = threading.Thread(target=run_bot)
   bot_thread.daemon = True
   bot_thread.start()
-
   port = int(os.getenv("PORT", 5000))
   app.run(host="0.0.0.0", port=port)
