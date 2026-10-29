@@ -7,28 +7,32 @@ import pandas as pd
 import requests
 
 # ---------------------------------------------------------
-# 1. SETUP FLASK (Supaya Render kesan port yang sah)
+# 1. SETUP FLASK
 # ---------------------------------------------------------
 app = Flask(__name__)
 
 
 @app.route("/")
 def home():
-  return "Bot M30/H1 Breakout Syezz sedang aktif!"
+  return "Bot M30/H1 Breakout Syezz dengan Memori Kekal sedang aktif!"
 
 
 # ---------------------------------------------------------
-# 2. KONFIGURASI TELEGRAM & API (Mengikut Environment Variables Render)
+# 2. KONFIGURASI TELEGRAM & API
 # ---------------------------------------------------------
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TWELVE_API_KEY = os.getenv("TWELVE_DATA_API")
 
+# MEMORI KEKAL BOT (STATE MEMORY)
+# Nilai ini dikunci dan tidak akan reset jadi Sideways semasa retrace
+PERSISTENT_H1_TREND = "🟡 SIDEWAYS (Menunggu Breakout)"
+PERSISTENT_M30_TREND = "🟡 SIDEWAYS (Menunggu Breakout)"
+
 
 def send_telegram_message(message, chat_id=CHAT_ID):
-  """Fungsi untuk menghantar mesej amaran ke Telegram"""
   if not TOKEN or not chat_id:
-    print("Ralat: Token Telegram atau Chat ID tidak ditemui dalam env.")
+    print("Ralat: Token Telegram atau Chat ID tidak ditemui.")
     return
 
   url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -42,10 +46,8 @@ def send_telegram_message(message, chat_id=CHAT_ID):
 
 
 def get_market_data(timeframe="1h"):
-  """Mengambil data pasaran secara live daripada Twelve Data API"""
   tf_mapping = {"1h": "1h", "30min": "30min"}
   tf = tf_mapping.get(timeframe, "1h")
-
   url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval={tf}&outputsize=100&apikey={TWELVE_API_KEY}"
 
   try:
@@ -67,10 +69,9 @@ def get_market_data(timeframe="1h"):
 
 
 # ---------------------------------------------------------
-# 3. LOGIK PENCARIAN BUCU SAH (FRACTAL BODY)
+# 3. PENCARIAN BUCU SAH (FRACTAL BODY)
 # ---------------------------------------------------------
 def get_valid_bucu(df):
-  """Mencari aras Bucu High & Low yang sah (Fractal Body)."""
   if df is None or len(df) < 5:
     return None, None
 
@@ -105,45 +106,60 @@ def get_valid_bucu(df):
 
 
 # ---------------------------------------------------------
-# 4. LOGIK MAJOR TREND (PASTI KEKAL BEARISH/BULLISH)
+# 4. KEMASKINI MEMORI STATE TREND (H1 & M30)
 # ---------------------------------------------------------
-def evaluate_major_trend(df):
-  """Menilai trend major secara langsung mengikut aras struktur semasa"""
-  if df is None or len(df) < 10:
-    return "🟡 SIDEWAYS (Data tidak cukup)", 0, 0, 0
+def evaluate_and_update_states():
+  global PERSISTENT_H1_TREND, PERSISTENT_M30_TREND
 
-  df = df.copy()
-  completed_candle = df.iloc[-2]
-  close_price = float(completed_candle["close"])
-  active_bucu_high, active_bucu_low = get_valid_bucu(df)
+  # Semak H1
+  df_h1 = get_market_data(timeframe="1h")
+  h1_close, h1_high, h1_low = 0, 0, 0
+  if df_h1 is not None and len(df_h1) >= 10:
+    h1_close = float(df_h1.iloc[-2]["close"])
+    h1_high, h1_low = get_valid_bucu(df_h1)
 
-  # Logik Tetap: Jika harga di atas Resistance High ($4070.21) -> Bullish.
-  # Jika di bawahnya (dan berada dalam fasa bawah support yang telah dipecahkan) -> Bearish.
-  if active_bucu_high is not None and close_price > active_bucu_high:
-    major_trend = "🟢 BULLISH (Uptrend Major)"
-  else:
-    major_trend = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
+    # Logik Memori Kekal H1
+    if h1_low is not None and h1_close < h1_low:
+      PERSISTENT_H1_TREND = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
+    elif h1_high is not None and h1_close > h1_high:
+      PERSISTENT_H1_TREND = "🟢 BULLISH (Uptrend Major / Pullback Zone)"
+    # Jika dalam range (retrace), ia kekal pada status terakhir (tidak reset!)
+
+  # Semak M30
+  df_m30 = get_market_data(timeframe="30min")
+  m30_close, m30_high, m30_low = 0, 0, 0
+  if df_m30 is not None and len(df_m30) >= 10:
+    m30_close = float(df_m30.iloc[-2]["close"])
+    m30_high, m30_low = get_valid_bucu(df_m30)
+
+    # Logik Memori Kekal M30
+    if m30_low is not None and m30_close < m30_low:
+      PERSISTENT_M30_TREND = "🔴 BEARISH (Downtrend Minor / Retrace Zone)"
+    elif m30_high is not None and m30_close > m30_high:
+      PERSISTENT_M30_TREND = "🟢 BULLISH (Uptrend Minor / Pullback Zone)"
 
   return (
-      major_trend,
-      close_price,
-      active_bucu_high if active_bucu_high else 0,
-      active_bucu_low if active_bucu_low else 0,
+      PERSISTENT_H1_TREND,
+      h1_close,
+      h1_high if h1_high else 0,
+      h1_low if h1_low else 0,
+      PERSISTENT_M30_TREND,
+      m30_close,
+      m30_high if m30_high else 0,
+      m30_low if m30_low else 0,
   )
 
 
 # ---------------------------------------------------------
-# 5. FUNGSI ANALISIS GABUNGAN H1 & M30 UNTUK /trend
+# 5. FUNGSI ANALISIS UNTUK /trend
 # ---------------------------------------------------------
 def analyze_current_trend():
-  df_h1 = get_market_data(timeframe="1h")
-  df_m30 = get_market_data(timeframe="30min")
-
-  h1_status, h1_close, h1_high, h1_low = evaluate_major_trend(df_h1)
-  m30_status, m30_close, m30_high, m30_low = evaluate_major_trend(df_m30)
+  h1_status, h1_close, h1_high, h1_low, m30_status, m30_close, m30_high, m30_low = (
+      evaluate_and_update_states()
+  )
 
   msg = (
-      f"📊 *ANALISIS STRUKTUR MAJOR TREND (BODY CLOSE)*\n\n"
+      f"📊 *ANALISIS MEMORI KEKAL MAJOR TREND*\n\n"
       f"⏰ *Analisis H1 (Major Trend):*\n"
       f"• Trend H1: {h1_status}\n"
       f"• Close H1: `${h1_close:.2f}`\n"
@@ -159,7 +175,7 @@ def analyze_current_trend():
 
 
 # ---------------------------------------------------------
-# 6. TELEGRAM WEBHOOK ROUTE (UNTUK TERIMA ARAHAN /trend)
+# 6. TELEGRAM WEBHOOK ROUTE
 # ---------------------------------------------------------
 @app.route(f"/{TOKEN}", methods=["POST"])
 def telegram_webhook():
@@ -177,16 +193,18 @@ def telegram_webhook():
 
 
 # ---------------------------------------------------------
-# 7. GELUNG UTAMA BOT (AUTO ALERT M30 BUY & SELL)
+# 7. GELUNG UTAMA BOT (BACKGROUND AUTO ALERT M30)
 # ---------------------------------------------------------
 def run_bot():
-  print("🤖 Bot Breakout Syezz dimulakan (Auto Alert M30 Buy/Sell)...")
+  print("🤖 Bot Memori Kekal Syezz dimulakan...")
   last_processed_time_m30 = None
 
   while True:
     try:
-      df_m30 = get_market_data(timeframe="30min")
+      # Sentiasa kemas kini state di background
+      evaluate_and_update_states()
 
+      df_m30 = get_market_data(timeframe="30min")
       if df_m30 is not None and len(df_m30) >= 10:
         completed_candle = df_m30.iloc[-2]
         current_candle_time = str(completed_candle["time"])
@@ -218,12 +236,12 @@ def run_bot():
 
 
 # ---------------------------------------------------------
-# 8. EXECUTION UTAMA (FLASK + THREADING)
+# 8. EXECUTION UTAMA
 # ---------------------------------------------------------
 if __name__ == "__main__":
   bot_thread = threading.Thread(target=run_bot)
   bot_thread.daemon = True
   bot_thread.start()
 
-  port = int(os.environ.environ.get("PORT", 5000) if hasattr(os.environ, "environ") else os.environ.get("PORT", 5000))
-  app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+  port = int(os.getenv("PORT", 5000))
+  app.run(host="0.0.0.0", port=port)
