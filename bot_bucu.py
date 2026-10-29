@@ -1,10 +1,10 @@
+from datetime import datetime
 import os
 import threading
 import time
-from datetime import datetime
+from flask import Flask, request
 import pandas as pd
 import requests
-from flask import Flask
 
 # ---------------------------------------------------------
 # 1. SETUP FLASK (Supaya Render kesan port yang sah)
@@ -14,20 +14,25 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-  return "Bot M30 Breakout Syezz sedang aktif!"
+  return "Bot M30/H1 Breakout Syezz sedang aktif!"
 
 
 # ---------------------------------------------------------
-# 2. KONFIGURASI TELEGRAM & API
+# 2. KONFIGURASI TELEGRAM & API (Mengikut Environment Variables Render)
 # ---------------------------------------------------------
-TOKEN = os.getenv("TELEGRAM_TOKEN", "MASUKKAN_TOKEN_BOT_ANDA")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "MASUKKAN_CHAT_ID_ANDA")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TWELVE_API_KEY = os.getenv("TWELVE_DATA_API")
 
 
-def send_telegram_message(message):
+def send_telegram_message(message, chat_id=CHAT_ID):
   """Fungsi untuk menghantar mesej amaran ke Telegram"""
+  if not TOKEN or not chat_id:
+    print("Ralat: Token Telegram atau Chat ID tidak ditemui dalam env.")
+    return
+
   url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-  payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+  payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
   try:
     response = requests.post(url, json=payload, timeout=10)
     if response.status_code != 200:
@@ -37,16 +42,20 @@ def send_telegram_message(message):
 
 
 def get_market_data():
-  """[PENTING] Gantikan bahagian ini dengan sumber data broker anda
+  """Mengambil data pasaran (Contoh menggunakan Twelve Data API jika berkaitan)
 
-  (Contoh: MetaTrader API, TwelveData, atau endpoint data anda).
   Pastikan DataFrame yang dipulangkan mempunyai kolum:
   ['time', 'open', 'high', 'low', 'close']
   """
-  # --- CONTOH TEMPLATE DATA FETCH ---
-  # url = "https://api.brokeranda.com/data?symbol=XAUUSD.vx&tf=M30"
-  # df = pd.read_json(url)
-  # return df
+  # --- CONTOH TEMPLATE DATA FETCH (Gantikan dengan sumber anda) ---
+  # url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=1h&outputsize=50&apikey={TWELVE_API_KEY}"
+  # response = requests.get(url).json()
+  # if "values" in response:
+  #     df = pd.DataFrame(response['values'])
+  #     df = df.iloc[::-1].reset_index(drop=True)
+  #     for col in ['open', 'high', 'low', 'close']:
+  #         df[col] = df[col].astype(float)
+  #     return df
   pass
 
 
@@ -54,10 +63,7 @@ def get_market_data():
 # 3. LOGIK PENCARIAN BUCU SAH (ELAK REPAINTING)
 # ---------------------------------------------------------
 def get_valid_bucu(df):
-  """Mencari aras Bucu High & Low yang sah (Fractal Body).
-
-  Aras ini dikunci dan tidak berubah-ubah mengikut candle live.
-  """
+  """Mencari aras Bucu High & Low yang sah (Fractal Body)."""
   if df is None or len(df) < 5:
     return None, None
 
@@ -70,7 +76,6 @@ def get_valid_bucu(df):
 
   # Imbas data (abaikan 2 candle terakhir yang belum lengkap struktur swing)
   for i in range(2, len(df) - 2):
-    # Logik Bucu Low Sah (Bentuk V)
     if (
         df["body_low"].iloc[i] < df["body_low"].iloc[i - 1]
         and df["body_low"].iloc[i] < df["body_low"].iloc[i - 2]
@@ -79,7 +84,6 @@ def get_valid_bucu(df):
     ):
       valid_bucu_lows.append(df["body_low"].iloc[i])
 
-    # Logik Bucu High Sah (Bentuk A)
     if (
         df["body_high"].iloc[i] > df["body_high"].iloc[i - 1]
         and df["body_high"].iloc[i] > df["body_high"].iloc[i - 2]
@@ -95,10 +99,68 @@ def get_valid_bucu(df):
 
 
 # ---------------------------------------------------------
-# 4. GELUNG UTAMA BOT (BACKGROUND PROCESS)
+# 4. FUNGSI ANALISIS TREND SEMASA (DIPERBAIKI)
+# ---------------------------------------------------------
+def analyze_current_trend():
+  df = get_market_data()
+  if df is None or len(df) < 5:
+    return "⚠️ Data pasaran tidak mencukupi buat masa ini."
+
+  completed_candle = df.iloc[-2]
+  close_price = float(completed_candle["close"])
+  bucu_high, bucu_low = get_valid_bucu(df)
+
+  # Logik penentuan trend yang lebih fleksibel (Kekal ikut arah breakout terakhir)
+  trend_status = "🟡 SIDEWAYS (Dalam Range)"
+
+  if bucu_low is not None and close_price < bucu_low:
+    trend_status = "🔴 BEARISH (TURUN - Breakout Support)"
+  elif bucu_high is not None and close_price > bucu_high:
+    trend_status = "🟢 BULLISH (NAIK - Breakout Resistance)"
+  else:
+    # Jika harga berada di antara bucu, semak candle terdahulu sama ada baru lepas pecah support/resistance
+    # Supaya ia tidak terus jadi sideways kalau sekadar retrace kecil
+    recent_closes = df["close"].iloc[-5:-1].values
+    if bucu_low is not None and any(c < bucu_low for c in recent_closes):
+      trend_status = (
+          "🔴 BEARISH (Rekod Penurunan - Harga Sedang Retrace/Pantul)"
+      )
+    elif bucu_high is not None and any(c > bucu_high for c in recent_closes):
+      trend_status = "🟢 BULLISH (Rekod Kenaikan - Harga Sedang Pullback)"
+
+  msg = (
+      f"📊 *ANALISIS STRUKTUR BUCU (BODY CLOSE)*\n\n"
+      f"• **Trend Semasa:** {trend_status}\n"
+      f"• **Close Terkini:** `${close_price:.2f}`\n"
+      f"• **Bucu Body High:** `${bucu_high if bucu_high else 0:.2f}`\n"
+      f"• **Bucu Body Low:** `${bucu_low if bucu_low else 0:.2f}`"
+  )
+  return msg
+
+
+# ---------------------------------------------------------
+# 5. TELEGRAM WEBHOOK ROUTE (UNTUK TERIMA ARAHAN /trend)
+# ---------------------------------------------------------
+@app.route(f"/{TOKEN}", methods=["POST"])
+def telegram_webhook():
+  data = request.get_json()
+  if "message" in data:
+    message = data["message"]
+    chat_id = message["chat"]["id"]
+    text = message.get("text", "")
+
+    if text.startswith("/trend"):
+      response_text = analyze_current_trend()
+      send_telegram_message(response_text, chat_id=chat_id)
+
+  return "OK", 200
+
+
+# ---------------------------------------------------------
+# 6. GELUNG UTAMA BOT (BACKGROUND PROCESS UNTUK ALERT)
 # ---------------------------------------------------------
 def run_bot():
-  print("🤖 Bot M30 Breakout Syezz dimulakan...")
+  print("🤖 Bot Breakout Syezz dimulakan...")
   last_processed_time = None
 
   while True:
@@ -106,33 +168,43 @@ def run_bot():
       df = get_market_data()
 
       if df is not None and len(df) >= 5:
-        # AMBIL CANDLE YANG SUDAH CLOSE (iloc[-2])
-        # iloc[-1] adalah candle live sedang gerak (jangan guna untuk alert close)
         completed_candle = df.iloc[-2]
         current_candle_time = str(completed_candle["time"])
         close_price = float(completed_candle["close"])
 
-        # Dapatkan bucu sah terkini
         bucu_high, bucu_low = get_valid_bucu(df)
 
-        # Semak jika ini candle M30 baharu yang baru selesai tutup
+        # Semak jika ini candle baharu yang baru selesai tutup
         if current_candle_time != last_processed_time:
 
-          # Syarat Breakout Sell (Bearish Body Close melepasi Bucu Low sah)
+          # Amaran Breakout Sell (Bearish)
           if bucu_low is not None and close_price < bucu_low:
             msg = (
-                f"🚨 *ALERT BREAKOUT M30 (BEARISH BODY)*! 🔴\n\n"
-                f"Candle M30 baharu sahaja *CLOSE*!\n"
-                f"• Close M30: `${close_price:.2f}`\n"
+                f"🚨 *ALERT BREAKOUT BEARISH (BODY CLOSE)*! 🔴\n\n"
+                f"Candle baharu sahaja *CLOSE* di bawah support!\n"
+                f"• Close Harga: `${close_price:.2f}`\n"
                 f"• Bucu Body Low Tembus: `${bucu_low:.2f}`\n\n"
-                f"_Struktur M30 Terdekat sah bertukar kepada Downtrend / Bearish!_"
+                f"_Struktur sah bertukar kepada Downtrend / Bearish!_"
             )
             send_telegram_message(msg)
             last_processed_time = current_candle_time
             print(f"[{datetime.now()}] Alert Breakout Sell berjaya dihantar!")
 
-      # Semak setiap 60 saat
-      time.sleep(60)
+          # Amaran Breakout Buy (Bullish)
+          elif bucu_high is not None and close_price > bucu_high:
+            msg = (
+                f"🚨 *ALERT BREAKOUT BULLISH (BODY CLOSE)*! 🟢\n\n"
+                f"Candle baharu sahaja *CLOSE* di atas resistance!\n"
+                f"• Close Harga: `${close_price:.2f}`\n"
+                f"• Bucu Body High Tembus: `${bucu_high:.2f}`\n\n"
+                f"_Struktur sah bertukar kepada Uptrend / Bullish!_"
+            )
+            send_telegram_message(msg)
+            last_processed_time = current_candle_time
+            print(f"[{datetime.now()}] Alert Breakout Buy berjaya dihantar!")
+
+      # Semak setiap 30 saat
+      time.sleep(30)
 
     except Exception as e:
       print(f"Ralat berlaku dalam gelung utama bot: {e}")
@@ -140,7 +212,7 @@ def run_bot():
 
 
 # ---------------------------------------------------------
-# 5. EXECUTION UTAMA (FLASK + THREADING)
+# 7. EXECUTION UTAMA (FLASK + THREADING)
 # ---------------------------------------------------------
 if __name__ == "__main__":
   # Jalankan bot di background thread
