@@ -6,20 +6,14 @@ from flask import Flask, request
 import pandas as pd
 import requests
 
-# ---------------------------------------------------------
-# 1. SETUP FLASK
-# ---------------------------------------------------------
 app = Flask(__name__)
 
 
 @app.route("/")
 def home():
-  return "Bot M30 (MA Period 1) & H1 Trend Syezz Aktif!"
+  return "Bot Syezz (Dynamic H1 & M30 MA1) Aktif!"
 
 
-# ---------------------------------------------------------
-# 2. KONFIGURASI TELEGRAM & API
-# ---------------------------------------------------------
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TWELVE_API_KEY = os.getenv("TWELVE_DATA_API")
@@ -36,12 +30,11 @@ def send_telegram_message(message, chat_id=CHAT_ID):
     print(f"Ralat Telegram: {e}")
 
 
-def get_market_data(timeframe="30min"):
-  tf = "1h" if timeframe == "1h" else "30min"
+def get_market_data(tf="30min"):
   url = f"https://api.twelvedata.com/time_series?symbol=XAU/USD&interval={tf}&outputsize=100&apikey={TWELVE_API_KEY}"
   try:
-    response = requests.get(url, timeout=10)
-    data = response.json()
+    res = requests.get(url, timeout=10)
+    data = res.json()
     if "values" in data:
       df = pd.DataFrame(data["values"])
       df = df.iloc[::-1].reset_index(drop=True)
@@ -54,21 +47,12 @@ def get_market_data(timeframe="30min"):
     return None
 
 
-# ---------------------------------------------------------
-# 3. PENGIRAAN BUCU BERASASKAN MOVING AVERAGE PERIOD 1
-# ---------------------------------------------------------
-def get_ma1_bucu(df):
+def get_bucu_points(df):
   if df is None or len(df) < 5:
     return None, None
   df = df.copy()
-
-  # Moving Average Period 1 pada asasnya adalah harga itu sendiri (close/open),
-  # tetapi kita guna pengiraan bucu fractal pada nilai MA(1) atau harga penutup/tinggi/rendah.
-  df["ma1"] = df["close"].rolling(window=1).mean()
-
-  valid_bucu_lows = []
-  valid_bucu_highs = []
-
+  df["ma1"] = df["close"]
+  highs, lows = [], []
   for i in range(2, len(df) - 2):
     if (
         df["ma1"].iloc[i] < df["ma1"].iloc[i - 1]
@@ -76,77 +60,51 @@ def get_ma1_bucu(df):
         and df["ma1"].iloc[i] < df["ma1"].iloc[i + 1]
         and df["ma1"].iloc[i] < df["ma1"].iloc[i + 2]
     ):
-      valid_bucu_lows.append(df["ma1"].iloc[i])
-
+      lows.append(df["ma1"].iloc[i])
     if (
         df["ma1"].iloc[i] > df["ma1"].iloc[i - 1]
         and df["ma1"].iloc[i] > df["ma1"].iloc[i - 2]
         and df["ma1"].iloc[i] > df["ma1"].iloc[i + 1]
         and df["ma1"].iloc[i] > df["ma1"].iloc[i + 2]
     ):
-      valid_bucu_highs.append(df["ma1"].iloc[i])
-
-  return (
-      valid_bucu_highs[-1] if valid_bucu_highs else None,
-      valid_bucu_lows[-1] if valid_bucu_lows else None,
-  )
+      highs.append(df["ma1"].iloc[i])
+  return highs[-1] if highs else None, lows[-1] if lows else None
 
 
-# ---------------------------------------------------------
-# 4. PENILAIAN H1 (MAJOR TREND SAHAJA) & M30 (MA PERIOD 1)
-# ---------------------------------------------------------
-def evaluate_h1_major_trend(df_h1):
-  if df_h1 is None or len(df_h1) < 2:
-    return "🔴 BEARISH (Downtrend / Retracement)", 0
-
-  close_price = float(df_h1.iloc[-2]["close"])
-  # H1 kekal memaparkan struktur major trend secara langsung
-  trend = "🔴 BEARISH (Downtrend / Retracement)"
-  return trend, close_price
-
-
-def evaluate_m30_ma1_trend(df_m30):
-  if df_m30 is None or len(df_m30) < 10:
-    return "🔴 BEARISH (Retrace Zone)", 0, 0, 0
-
-  close_price = float(df_m30.iloc[-2]["close"])
-  bucu_high, bucu_low = get_ma1_bucu(df_m30)
-
-  if bucu_high is not None and close_price > bucu_high:
-    trend = "🟢 BULLISH (Breakout Buy MA1)"
-  elif bucu_low is not None and close_price < bucu_low:
-    trend = "🔴 BEARISH (Breakout Sell MA1)"
-  else:
-    trend = "🔴 BEARISH (Retrace Zone / Dalam Bucu MA1)"
-
-  return (
-      trend,
-      close_price,
-      bucu_high if bucu_high else 0,
-      bucu_low if bucu_low else 0,
-  )
-
-
-# ---------------------------------------------------------
-# 5. FUNGSI ANALISIS /trend
-# ---------------------------------------------------------
 def analyze_current_trend():
-  df_h1 = get_market_data(timeframe="1h")
-  df_m30 = get_market_data(timeframe="30min")
+  df_h1 = get_market_data("1h")
+  df_m30 = get_market_data("30min")
 
-  h1_status, h1_close = evaluate_h1_major_trend(df_h1)
-  m30_status, m30_close, m30_high, m30_low = evaluate_m30_ma1_trend(df_m30)
+  h1_close = float(df_h1.iloc[-2]["close"]) if df_h1 is not None else 0
+  h1_high, h1_low = get_bucu_points(df_h1)
+
+  m30_close = float(df_m30.iloc[-2]["close"]) if df_m30 is not None else 0
+  m30_high, m30_low = get_bucu_points(df_m30)
+
+  # H1 Major Trend: Automatik bertukar Bullish jika close atas bucu high, jika tidak kekal Bearish/Retracement
+  if h1_high is not None and h1_close > h1_high:
+    h1_status = "🟢 BULLISH (Uptrend Major)"
+  else:
+    h1_status = "🔴 BEARISH (Downtrend / Retracement Major)"
+
+  # M30 MA(1) Breakout
+  if m30_high is not None and m30_close > m30_high:
+    m30_status = "🟢 BULLISH (Breakout Buy MA1)"
+  elif m30_low is not None and m30_close < m30_low:
+    m30_status = "🔴 BEARISH (Breakout Sell MA1)"
+  else:
+    m30_status = "🔴 BEARISH (Retrace Zone / Dalam Bucu MA1)"
 
   msg = (
-      f"📊 *ANALISIS TREND (H1 & M30 MA(1))*\\n\\n"
-      f"⏰ *Analisis H1 (Major Trend):*\\n"
-      f"• Status H1: {h1_status}\\n"
-      f"• Close H1: `${h1_close:.2f}`\\n\\n"
-      f"📉 *Analisis M30 (MA Period 1 Breakout):*\\n"
-      f"• Status M30: {m30_status}\\n"
-      f"• Close M30: `${m30_close:.2f}`\\n"
-      f"• Bucu High MA(1): `${m30_high:.2f}`\\n"
-      f"• Bucu Low MA(1): `${m30_low:.2f}`"
+      f"📊 *ANALISIS TREND DINAMIK SYEZZ*\n\n"
+      f"⏰ *Analisis H1 (Major Trend):*\n"
+      f"• Status H1: {h1_status}\n"
+      f"• Close H1: `${h1_close:.2f}`\n\n"
+      f"📉 *Analisis M30 (MA Period 1):*\n"
+      f"• Status M30: {m30_status}\n"
+      f"• Close M30: `${m30_close:.2f}`\n"
+      f"• Bucu High MA1: `${m30_high if m30_high else 0:.2f}`\n"
+      f"• Bucu Low MA1: `${m30_low if m30_low else 0:.2f}`"
   )
   return msg
 
@@ -159,34 +117,30 @@ def telegram_webhook():
     chat_id = message["chat"]["id"]
     text = message.get("text", "")
     if text.startswith("/trend"):
-      response_text = analyze_current_trend()
-      send_telegram_message(response_text, chat_id=chat_id)
+      send_telegram_message(analyze_current_trend(), chat_id=chat_id)
   return "OK", 200
 
 
 def run_bot():
-  print("🤖 Bot Syezz (M30 MA(1) & H1 Major Trend) Berjalan...")
   last_time = None
   while True:
     try:
-      df_m30 = get_market_data(timeframe="30min")
+      df_m30 = get_market_data("30min")
       if df_m30 is not None and len(df_m30) >= 10:
         candle = df_m30.iloc[-2]
         c_time = str(candle["time"])
         close = float(candle["close"])
-        b_high, b_low = get_ma1_bucu(df_m30)
+        b_high, b_low = get_bucu_points(df_m30)
 
         if c_time != last_time:
           if b_low is not None and close < b_low:
             send_telegram_message(
-                f"🚨 *BREAKOUT SELL M30 (MA1)*! 🔴\\nClose:"
-                f" `${close:.2f}`\\nTembus Bucu Low: `${b_low:.2f}`"
+                f"🚨 *BREAKOUT SELL M30 (MA1)*! 🔴\nClose: `${close:.2f}`"
             )
             last_time = c_time
           elif b_high is not None and close > b_high:
             send_telegram_message(
-                f"🚨 *BREAKOUT BUY M30 (MA1)*! 🟢\\nClose:"
-                f" `${close:.2f}`\\nTembus Bucu High: `${b_high:.2f}`"
+                f"🚨 *BREAKOUT BUY M30 (MA1)*! 🟢\nClose: `${close:.2f}`"
             )
             last_time = c_time
       time.sleep(30)
