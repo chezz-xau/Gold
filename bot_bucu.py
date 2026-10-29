@@ -105,10 +105,10 @@ def get_valid_bucu(df):
 
 
 # ---------------------------------------------------------
-# 4. LOGIK MAJOR TREND (STATEFUL PERSISTENCE SEBENAR)
+# 4. LOGIK MAJOR TREND (KEKAL BEARISH SELEPAS BREAKOUT)
 # ---------------------------------------------------------
 def evaluate_major_trend(df):
-  """Menilai trend major dengan mengekalkan status breakout terakhir secara kekal"""
+  """Menilai trend major secara kekal (tidak akan jadi Sideways selagi di bawah Resistance High)"""
   if df is None or len(df) < 10:
     return "🟡 SIDEWAYS (Data tidak cukup)", 0, 0, 0
 
@@ -120,28 +120,14 @@ def evaluate_major_trend(df):
   close_price = float(completed_candle["close"])
   active_bucu_high, active_bucu_low = get_valid_bucu(df)
 
-  # Mulakan dengan state default
-  trend_state = "🟡 SIDEWAYS (Dalam Range)"
-  curr_bh, curr_bl = None, None
-
-  # Imbas sejarah bar demi bar; status KEKAL (tidak reset) selagi tiada breakout bertentangan
-  for i in range(5, len(df) - 1):
-    sub_df = df.iloc[:i]
-    bh, bl = get_valid_bucu(sub_df)
-    if bh is not None:
-      curr_bh = bh
-    if bl is not None:
-      curr_bl = bl
-
-    c_close = df["close"].iloc[i]
-
-    if curr_bl is not None and c_close < curr_bl:
-      trend_state = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
-    elif curr_bh is not None and c_close > curr_bh:
-      trend_state = "🟢 BULLISH (Uptrend Major / Pullback Zone)"
+  # Selagi harga di bawah Resistance High utama, kekal Bearish (mengelakkan isu Sideways semasa retrace)
+  if active_bucu_high is not None and close_price > active_bucu_high:
+    major_trend = "🟢 BULLISH (Uptrend Major - Break Resistance)"
+  else:
+    major_trend = "🔴 BEARISH (Downtrend Major / Retrace Zone)"
 
   return (
-      trend_state,
+      major_trend,
       close_price,
       active_bucu_high if active_bucu_high else 0,
       active_bucu_low if active_bucu_low else 0,
