@@ -53,6 +53,7 @@ def get_bucu_points(df):
   df = df.copy()
   df["ma1"] = df["close"]
   highs, lows = [], []
+
   for i in range(2, len(df) - 2):
     if (
         df["ma1"].iloc[i] < df["ma1"].iloc[i - 1]
@@ -60,15 +61,27 @@ def get_bucu_points(df):
         and df["ma1"].iloc[i] < df["ma1"].iloc[i + 1]
         and df["ma1"].iloc[i] < df["ma1"].iloc[i + 2]
     ):
-      lows.append(df["ma1"].iloc[i])
+      lows.append((i, df["ma1"].iloc[i]))
     if (
         df["ma1"].iloc[i] > df["ma1"].iloc[i - 1]
         and df["ma1"].iloc[i] > df["ma1"].iloc[i - 2]
         and df["ma1"].iloc[i] > df["ma1"].iloc[i + 1]
         and df["ma1"].iloc[i] > df["ma1"].iloc[i + 2]
     ):
-      highs.append(df["ma1"].iloc[i])
-  return highs[-1] if highs else None, lows[-1] if lows else None
+      highs.append((i, df["ma1"].iloc[i]))
+
+  latest_high = None
+  latest_low = None
+
+  if highs:
+    highs.sort(key=lambda x: x[0], reverse=True)
+    latest_high = highs[0][1]
+
+  if lows:
+    lows.sort(key=lambda x: x[0], reverse=True)
+    latest_low = lows[0][1]
+
+  return latest_high, latest_low
 
 
 def analyze_current_trend():
@@ -81,13 +94,11 @@ def analyze_current_trend():
   m30_close = float(df_m30.iloc[-2]["close"]) if df_m30 is not None else 0
   m30_high, m30_low = get_bucu_points(df_m30)
 
-  # H1 Major Trend: Automatik bertukar Bullish jika close atas bucu high, jika tidak kekal Bearish/Retracement
   if h1_high is not None and h1_close > h1_high:
     h1_status = "🟢 BULLISH (Uptrend Major)"
   else:
     h1_status = "🔴 BEARISH (Downtrend / Retracement Major)"
 
-  # M30 MA(1) Breakout
   if m30_high is not None and m30_close > m30_high:
     m30_status = "🟢 BULLISH (Breakout Buy MA1)"
   elif m30_low is not None and m30_close < m30_low:
@@ -109,7 +120,7 @@ def analyze_current_trend():
   return msg
 
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route("/webhook", methods=["POST"])
 def telegram_webhook():
   data = request.get_json()
   if "message" in data:
